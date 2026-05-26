@@ -14,7 +14,7 @@ macOS utility app that translates selected text with `codex exec` and shows the 
 swift run CodexTranslator
 ```
 
-The app stays in the menu bar as `Codex`.
+The app stays in the menu bar as `Codex` and shows a small ready panel on launch. Keep the terminal process running while you use the shortcut.
 
 ## Usage
 

@@ -15,6 +15,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         NSApp.setActivationPolicy(.accessory)
         configureStatusItem()
         registerHotKey()
+        panelController.showReady(isAccessibilityTrusted: selectionReader.isAccessibilityTrusted)
     }
 
     func applicationWillTerminate(_ notification: Notification) {
@@ -27,13 +28,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         item.button?.toolTip = "Codex Translator"
 
         let menu = NSMenu()
-        menu.addItem(NSMenuItem(title: "Translate Selection", action: #selector(translateSelectionFromMenu), keyEquivalent: ""))
-        menu.addItem(NSMenuItem(title: "Open Accessibility Settings", action: #selector(openAccessibilitySettings), keyEquivalent: ""))
+        menu.addItem(makeMenuItem(title: "Translate Selection", action: #selector(translateSelectionFromMenu)))
+        menu.addItem(makeMenuItem(title: "Open Accessibility Settings", action: #selector(openAccessibilitySettings)))
         menu.addItem(.separator())
-        menu.addItem(NSMenuItem(title: "Quit", action: #selector(quit), keyEquivalent: "q"))
+        menu.addItem(makeMenuItem(title: "Quit", action: #selector(quit), keyEquivalent: "q"))
         item.menu = menu
 
         statusItem = item
+    }
+
+    private func makeMenuItem(title: String, action: Selector, keyEquivalent: String = "") -> NSMenuItem {
+        let item = NSMenuItem(title: title, action: action, keyEquivalent: keyEquivalent)
+        item.target = self
+        return item
     }
 
     private func registerHotKey() {

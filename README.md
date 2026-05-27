@@ -19,7 +19,7 @@ The app stays in the menu bar as `Codex` and shows a small ready panel on launch
 ## Usage
 
 1. Select text in any app.
-2. Press `Control + J`.
+2. Press `Control + F`.
 3. The app copies the selection, restores your previous clipboard contents, translates with `codex exec`, then shows the original and translated text in a floating panel.
 
 Japanese text is translated to English. Text without Japanese characters is translated to Japanese.
@@ -33,7 +33,7 @@ If the shortcut shows a permission error:
 1. Open the `Codex` menu bar item.
 2. Choose `Open Accessibility Settings`.
 3. Enable the running `CodexTranslator` executable.
-4. Press `Control + J` again.
+4. Press `Control + F` again.
 
 ## Codex command
 

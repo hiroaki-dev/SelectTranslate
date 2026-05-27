@@ -45,7 +45,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func registerHotKey() {
         do {
-            let manager = HotKeyManager(keyCode: UInt32(kVK_ANSI_J), modifiers: UInt32(controlKey)) { [weak self] in
+            let manager = HotKeyManager(keyCode: UInt32(kVK_ANSI_F), modifiers: UInt32(controlKey)) { [weak self] in
                 Task { @MainActor in
                     self?.startTranslation()
                 }
@@ -56,7 +56,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             panelController.showError(
                 source: nil,
                 title: "Shortcut Error",
-                message: "Control + J could not be registered: \(error.localizedDescription)"
+                message: "Control + F could not be registered: \(error.localizedDescription)"
             )
         }
     }
@@ -105,14 +105,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             panelController.showError(
                 source: nil,
                 title: "Accessibility Permission Required",
-                message: "Allow this process in System Settings > Privacy & Security > Accessibility, then press Control + J again."
+                message: "Allow this process in System Settings > Privacy & Security > Accessibility, then press Control + F again."
             )
             selectionReader.requestAccessibilityPermission()
         } catch SelectionReaderError.noSelectedText {
             panelController.showError(
                 source: nil,
                 title: "No Selected Text",
-                message: "Select text in the frontmost app before pressing Control + J."
+                message: "Select text in the frontmost app before pressing Control + F."
             )
         } catch {
             panelController.showError(

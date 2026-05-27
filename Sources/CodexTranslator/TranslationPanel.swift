@@ -53,7 +53,7 @@ final class TranslationPanelController {
     func showReady(isAccessibilityTrusted: Bool) {
         model.sourceText = """
         1. Select text in any app.
-        2. Press Control + J.
+        2. Press Control + F.
         3. The original and translation will appear here.
         """
 
@@ -63,7 +63,7 @@ final class TranslationPanelController {
             model.translatedText = "Accessibility permission is not enabled yet. Use the Codex menu bar item and choose Open Accessibility Settings."
         }
 
-        model.directionLabel = "Control + J"
+        model.directionLabel = "Control + F"
         model.title = "Codex Translator is Running"
         model.message = ""
         model.isLoading = false

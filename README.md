@@ -24,6 +24,8 @@ The app stays in the menu bar as `Codex` and shows a small ready panel on launch
 
 Japanese text is translated to English. Text without Japanese characters is translated to Japanese.
 
+Use the `Effort` segmented control in the panel to choose the Codex reasoning effort for the next translation. The app saves the selected value.
+
 ## Permissions
 
 macOS Accessibility permission is required so the app can send `Command + C` to the frontmost app.
@@ -44,3 +46,9 @@ codex exec --skip-git-repo-check --cd <project-directory> --output-last-message 
 ```
 
 `--skip-git-repo-check` avoids the trusted-directory error when translating outside a trusted Git repository.
+
+The selected panel effort is passed as:
+
+```sh
+-c 'model_reasoning_effort="<effort>"'
+```

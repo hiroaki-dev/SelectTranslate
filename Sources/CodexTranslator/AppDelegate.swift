@@ -99,7 +99,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             let direction = TranslationDirection.detect(sourceText)
             panelController.showLoading(source: sourceText, direction: direction)
 
-            let translatedText = try await translator.translate(sourceText, direction: direction)
+            let effort = panelController.reasoningEffort
+            let translatedText = try await translator.translate(sourceText, direction: direction, effort: effort)
             panelController.showResult(source: sourceText, translation: translatedText, direction: direction)
         } catch SelectionReaderError.accessibilityPermissionRequired {
             panelController.showError(

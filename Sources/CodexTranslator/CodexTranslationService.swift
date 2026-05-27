@@ -61,8 +61,8 @@ final class CodexTranslationService {
         self.workspacePath = workspacePath
     }
 
-    func translate(_ text: String, direction: TranslationDirection) async throws -> String {
-        try await Task.detached(priority: .userInitiated) { [workspacePath] in
+    func translate(_ text: String, direction: TranslationDirection, effort: ReasoningEffort) async throws -> String {
+        try await Task.detached(priority: .userInitiated) { [workspacePath, effort] in
             let outputURL = FileManager.default.temporaryDirectory
                 .appendingPathComponent("CodexTranslator-\(UUID().uuidString).txt")
 
@@ -77,6 +77,8 @@ final class CodexTranslationService {
                 "codex",
                 "exec",
                 "--skip-git-repo-check",
+                "-c",
+                "model_reasoning_effort=\"\(effort.rawValue)\"",
                 "--cd",
                 workspacePath,
                 "--output-last-message",

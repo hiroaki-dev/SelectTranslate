@@ -3,6 +3,8 @@ import SwiftUI
 
 @MainActor
 final class TranslationPanelModel: ObservableObject {
+    private static let effortDefaultsKey = "reasoningEffort"
+
     @Published var sourceText: String = ""
     @Published var translatedText: String = ""
     @Published var directionLabel: String = ""
@@ -10,12 +12,26 @@ final class TranslationPanelModel: ObservableObject {
     @Published var message: String = ""
     @Published var isLoading: Bool = false
     @Published var isError: Bool = false
+    @Published var reasoningEffort: ReasoningEffort {
+        didSet {
+            UserDefaults.standard.set(reasoningEffort.rawValue, forKey: Self.effortDefaultsKey)
+        }
+    }
+
+    init() {
+        let savedValue = UserDefaults.standard.string(forKey: Self.effortDefaultsKey)
+        reasoningEffort = savedValue.flatMap(ReasoningEffort.init(rawValue:)) ?? .low
+    }
 }
 
 @MainActor
 final class TranslationPanelController {
     private let model = TranslationPanelModel()
     private var panel: NSPanel?
+
+    var reasoningEffort: ReasoningEffort {
+        model.reasoningEffort
+    }
 
     func showLoading(source: String, direction: TranslationDirection) {
         model.sourceText = source
@@ -168,6 +184,8 @@ private struct TranslationOverlayView: View {
 
             Spacer()
 
+            effortPicker
+
             if model.isLoading {
                 ProgressView()
                     .controlSize(.small)
@@ -180,6 +198,24 @@ private struct TranslationOverlayView: View {
             }
             .buttonStyle(.plain)
             .help("Close")
+        }
+    }
+
+    private var effortPicker: some View {
+        HStack(spacing: 6) {
+            Text("Effort")
+                .font(.system(size: 12, weight: .medium))
+                .foregroundStyle(.secondary)
+
+            Picker("Effort", selection: $model.reasoningEffort) {
+                ForEach(ReasoningEffort.allCases) { effort in
+                    Text(effort.label).tag(effort)
+                }
+            }
+            .pickerStyle(.segmented)
+            .frame(width: 250)
+            .disabled(model.isLoading)
+            .help("Reasoning effort passed to codex exec")
         }
     }
 

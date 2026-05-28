@@ -63,10 +63,10 @@ CodexTranslator only auto-requests the permission once per launch. Use `CodexTra
 The app runs Codex with:
 
 ```sh
-codex exec --skip-git-repo-check --cd <application-support-workspace> --output-last-message <temp-file> -
+codex exec --ignore-user-config --skip-git-repo-check --cd <application-support-workspace> --output-last-message <temp-file> -
 ```
 
-`--cd` is fixed to CodexTranslator's Application Support workspace so the app does not use the current Terminal or Finder directory. `--skip-git-repo-check` avoids the trusted-directory error in that translation-only workspace.
+`--ignore-user-config` prevents Codex from reading project entries in `~/.codex/config.toml`, including entries under protected folders such as Downloads. `--cd` is fixed to CodexTranslator's Application Support workspace so the app does not use the current Terminal or Finder directory. `--skip-git-repo-check` avoids the trusted-directory error in that translation-only workspace.
 
 The selected panel effort is passed as:
 

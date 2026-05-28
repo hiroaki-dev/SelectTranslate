@@ -89,6 +89,7 @@ final class CodexTranslationService {
             process.arguments = [
                 "codex",
                 "exec",
+                "--ignore-user-config",
                 "--skip-git-repo-check",
                 "-c",
                 "model_reasoning_effort=\"\(effort.rawValue)\"",

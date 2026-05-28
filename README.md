@@ -31,9 +31,11 @@ The translation window is resizable.
 
 1. Select text in any app.
 2. Press `Control + F`.
-3. The app copies the selection, restores your previous clipboard contents, translates with `codex exec`, then shows the original and translated text in a floating panel.
+3. The app reads the selection through macOS Accessibility, translates with `codex exec`, then shows the original and translated text in a floating panel.
 
 Japanese text is translated to English. Text without Japanese characters is translated to Japanese.
+
+The app does not use `Command + C` or the clipboard to read selected text. Some apps do not expose selected text through Accessibility; in those apps CodexTranslator will show a no-selection error.
 
 Use the `Effort` segmented control in the panel to choose the Codex reasoning effort. When a translation is already displayed, changing the effort reruns that same source text. The app saves the selected value.
 
@@ -43,7 +45,7 @@ Use `Codex` > `Settings...` to edit the prompt template. The template supports `
 
 ## Permissions
 
-macOS Accessibility permission is required so the app can send `Command + C` to the frontmost app.
+macOS Accessibility permission is required so the app can read selected text from the frontmost app.
 
 If the shortcut shows a permission error:
 

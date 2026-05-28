@@ -1,6 +1,5 @@
-import AppKit
 import ApplicationServices
-import Carbon
+import Foundation
 
 enum SelectionReaderError: LocalizedError {
     case accessibilityPermissionRequired
@@ -11,15 +10,13 @@ enum SelectionReaderError: LocalizedError {
         case .accessibilityPermissionRequired:
             return "Accessibility permission is required to read the selected text."
         case .noSelectedText:
-            return "No selected text was copied from the frontmost app."
+            return "No selected text is exposed by the frontmost app through Accessibility."
         }
     }
 }
 
 @MainActor
 final class SelectionReader {
-    private let pasteboard = NSPasteboard.general
-
     var isAccessibilityTrusted: Bool {
         AXIsProcessTrusted()
     }
@@ -35,66 +32,107 @@ final class SelectionReader {
             throw SelectionReaderError.accessibilityPermissionRequired
         }
 
-        let snapshot = PasteboardSnapshot.capture(from: pasteboard)
-        pasteboard.clearContents()
-        let clearChangeCount = pasteboard.changeCount
-
-        postCopyShortcut()
-
-        for _ in 0..<12 {
-            try await Task.sleep(nanoseconds: 50_000_000)
-            if pasteboard.changeCount != clearChangeCount {
-                break
-            }
-        }
-
-        let copiedText = pasteboard.string(forType: .string)?
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-
-        snapshot.restore(to: pasteboard)
-
-        guard let copiedText, !copiedText.isEmpty else {
+        let systemWideElement = AXUIElementCreateSystemWide()
+        guard let focusedRef = copyAttribute(kAXFocusedUIElementAttribute as CFString, from: systemWideElement),
+              CFGetTypeID(focusedRef) == AXUIElementGetTypeID() else {
             throw SelectionReaderError.noSelectedText
         }
+        let focusedElement = focusedRef as! AXUIElement
 
-        return copiedText
+        if let selectedText = selectedTextAttribute(from: focusedElement) {
+            return selectedText
+        }
+
+        if let selectedText = selectedTextFromRangeParameter(from: focusedElement) {
+            return selectedText
+        }
+
+        if let selectedText = selectedTextFromValueRange(from: focusedElement) {
+            return selectedText
+        }
+
+        throw SelectionReaderError.noSelectedText
     }
 
-    private func postCopyShortcut() {
-        let source = CGEventSource(stateID: .combinedSessionState)
-        let keyDown = CGEvent(keyboardEventSource: source, virtualKey: CGKeyCode(kVK_ANSI_C), keyDown: true)
-        let keyUp = CGEvent(keyboardEventSource: source, virtualKey: CGKeyCode(kVK_ANSI_C), keyDown: false)
-
-        keyDown?.flags = CGEventFlags.maskCommand
-        keyUp?.flags = CGEventFlags.maskCommand
-
-        keyDown?.post(tap: CGEventTapLocation.cghidEventTap)
-        keyUp?.post(tap: CGEventTapLocation.cghidEventTap)
-    }
-}
-
-private struct PasteboardSnapshot {
-    private let items: [NSPasteboardItem]
-
-    static func capture(from pasteboard: NSPasteboard) -> PasteboardSnapshot {
-        let copiedItems: [NSPasteboardItem] = pasteboard.pasteboardItems?.map { item -> NSPasteboardItem in
-            let copiedItem = NSPasteboardItem()
-            for type in item.types {
-                if let data = item.data(forType: type) {
-                    copiedItem.setData(data, forType: type)
-                } else if let string = item.string(forType: type) {
-                    copiedItem.setString(string, forType: type)
-                }
-            }
-            return copiedItem
-        } ?? []
-
-        return PasteboardSnapshot(items: copiedItems)
+    private func selectedTextAttribute(from element: AXUIElement) -> String? {
+        guard let text = copyAttribute(kAXSelectedTextAttribute as CFString, from: element) as? String else {
+            return nil
+        }
+        return nonEmpty(text)
     }
 
-    func restore(to pasteboard: NSPasteboard) {
-        pasteboard.clearContents()
-        guard !items.isEmpty else { return }
-        pasteboard.writeObjects(items)
+    private func selectedTextFromRangeParameter(from element: AXUIElement) -> String? {
+        guard let range = selectedRange(from: element) else {
+            return nil
+        }
+
+        var mutableRange = range
+        guard let rangeValue = AXValueCreate(.cfRange, &mutableRange) else {
+            return nil
+        }
+
+        var textRef: CFTypeRef?
+        let result = AXUIElementCopyParameterizedAttributeValue(
+            element,
+            kAXStringForRangeParameterizedAttribute as CFString,
+            rangeValue,
+            &textRef
+        )
+
+        guard result == .success, let text = textRef as? String else {
+            return nil
+        }
+
+        return nonEmpty(text)
+    }
+
+    private func selectedTextFromValueRange(from element: AXUIElement) -> String? {
+        guard let range = selectedRange(from: element),
+              let fullText = copyAttribute(kAXValueAttribute as CFString, from: element) as? String else {
+            return nil
+        }
+
+        let nsText = fullText as NSString
+        let nsRange = NSRange(location: range.location, length: range.length)
+        guard nsRange.location >= 0,
+              nsRange.length > 0,
+              NSMaxRange(nsRange) <= nsText.length else {
+            return nil
+        }
+
+        return nonEmpty(nsText.substring(with: nsRange))
+    }
+
+    private func selectedRange(from element: AXUIElement) -> CFRange? {
+        guard let rangeRef = copyAttribute(kAXSelectedTextRangeAttribute as CFString, from: element),
+              CFGetTypeID(rangeRef) == AXValueGetTypeID() else {
+            return nil
+        }
+
+        let rangeValue = rangeRef as! AXValue
+        guard AXValueGetType(rangeValue) == .cfRange else {
+            return nil
+        }
+
+        var range = CFRange()
+        guard AXValueGetValue(rangeValue, .cfRange, &range), range.length > 0 else {
+            return nil
+        }
+
+        return range
+    }
+
+    private func copyAttribute(_ attribute: CFString, from element: AXUIElement) -> CFTypeRef? {
+        var value: CFTypeRef?
+        let result = AXUIElementCopyAttributeValue(element, attribute, &value)
+        guard result == .success else {
+            return nil
+        }
+        return value
+    }
+
+    private func nonEmpty(_ text: String) -> String? {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : trimmed
     }
 }

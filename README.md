@@ -8,13 +8,22 @@ macOS utility app that translates selected text with `codex exec` and shows the 
 - Xcode command line tools or Xcode
 - Codex CLI installed and logged in
 
+## Build and Launch as a Mac App
+
+```sh
+./scripts/build-app.sh
+open build/CodexTranslator.app
+```
+
+This launches CodexTranslator as a regular macOS app with a Dock icon and normal application menu.
+
 ## Local run
 
 ```sh
 swift run CodexTranslator
 ```
 
-The app stays in the menu bar as `Codex` and shows a small ready panel on launch. Keep the terminal process running while you use the shortcut.
+`swift run` is useful during development, but it runs the executable directly from Terminal. Use the `.app` flow above for normal app behavior.
 
 The translation window is resizable.
 

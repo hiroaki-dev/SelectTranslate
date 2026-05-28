@@ -15,13 +15,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var currentTranslationResult: TranslationResult?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
-        NSApp.setActivationPolicy(.accessory)
+        NSApp.setActivationPolicy(.regular)
         panelController.onReasoningEffortChanged = { [weak self] effort in
             self?.startSourceRetranslation(effort: effort)
         }
         panelController.onBackTranslateRequested = { [weak self] in
             self?.startBackTranslation()
         }
+        configureApplicationMenu()
         configureStatusItem()
         registerHotKey()
         panelController.showReady(isAccessibilityTrusted: selectionReader.isAccessibilityTrusted)
@@ -29,6 +30,44 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationWillTerminate(_ notification: Notification) {
         hotKeyManager?.unregister()
+    }
+
+    private func configureApplicationMenu() {
+        let mainMenu = NSMenu()
+
+        let appMenuItem = NSMenuItem(title: "CodexTranslator", action: nil, keyEquivalent: "")
+        let appMenu = NSMenu()
+        appMenu.addItem(makeMenuItem(title: "Settings...", action: #selector(openSettings), keyEquivalent: ","))
+        appMenu.addItem(.separator())
+        appMenu.addItem(NSMenuItem(title: "Hide CodexTranslator", action: #selector(NSApplication.hide(_:)), keyEquivalent: "h"))
+        appMenu.addItem(NSMenuItem(title: "Hide Others", action: #selector(NSApplication.hideOtherApplications(_:)), keyEquivalent: "h"))
+        appMenu.items.last?.keyEquivalentModifierMask = [.command, .option]
+        appMenu.addItem(NSMenuItem(title: "Show All", action: #selector(NSApplication.unhideAllApplications(_:)), keyEquivalent: ""))
+        appMenu.addItem(.separator())
+        appMenu.addItem(makeMenuItem(title: "Quit CodexTranslator", action: #selector(quit), keyEquivalent: "q"))
+        appMenuItem.submenu = appMenu
+        mainMenu.addItem(appMenuItem)
+
+        let editMenuItem = NSMenuItem(title: "Edit", action: nil, keyEquivalent: "")
+        let editMenu = NSMenu(title: "Edit")
+        editMenu.addItem(NSMenuItem(title: "Undo", action: Selector(("undo:")), keyEquivalent: "z"))
+        editMenu.addItem(NSMenuItem(title: "Redo", action: Selector(("redo:")), keyEquivalent: "Z"))
+        editMenu.addItem(.separator())
+        editMenu.addItem(NSMenuItem(title: "Cut", action: #selector(NSText.cut(_:)), keyEquivalent: "x"))
+        editMenu.addItem(NSMenuItem(title: "Copy", action: #selector(NSText.copy(_:)), keyEquivalent: "c"))
+        editMenu.addItem(NSMenuItem(title: "Paste", action: #selector(NSText.paste(_:)), keyEquivalent: "v"))
+        editMenu.addItem(NSMenuItem(title: "Select All", action: #selector(NSText.selectAll(_:)), keyEquivalent: "a"))
+        editMenuItem.submenu = editMenu
+        mainMenu.addItem(editMenuItem)
+
+        let actionsMenuItem = NSMenuItem(title: "Actions", action: nil, keyEquivalent: "")
+        let actionsMenu = NSMenu(title: "Actions")
+        actionsMenu.addItem(makeMenuItem(title: "Translate Selection", action: #selector(translateSelectionFromMenu)))
+        actionsMenu.addItem(makeMenuItem(title: "Open Accessibility Settings", action: #selector(openAccessibilitySettings)))
+        actionsMenuItem.submenu = actionsMenu
+        mainMenu.addItem(actionsMenuItem)
+
+        NSApp.mainMenu = mainMenu
     }
 
     private func configureStatusItem() {

@@ -18,6 +18,10 @@ enum SelectionReaderError: LocalizedError {
 
 @MainActor
 final class SelectionReader {
+    private let maxSearchDepth = 6
+    private let maxVisitedElements = 900
+    private let accessibilityTimeout: Float = 0.08
+
     var isAccessibilityTrusted: Bool {
         AXIsProcessTrusted()
     }
@@ -40,9 +44,16 @@ final class SelectionReader {
 
         let systemWideElement = AXUIElementCreateSystemWide()
         let candidates = candidateElements(from: systemWideElement)
+        var visitedElements = Set<CFHashCode>()
+        var remainingElements = maxVisitedElements
 
         for candidate in candidates {
-            if let selectedText = selectedText(in: candidate, maxDepth: 5) {
+            if let selectedText = selectedText(
+                in: candidate,
+                maxDepth: maxSearchDepth,
+                visitedElements: &visitedElements,
+                remainingElements: &remainingElements
+            ) {
                 return selectedText
             }
         }
@@ -54,21 +65,43 @@ final class SelectionReader {
         var candidates: [AXUIElement] = []
 
         if let focusedElement = elementAttribute(kAXFocusedUIElementAttribute as CFString, from: systemWideElement) {
-            candidates.append(focusedElement)
+            appendIfExternal(focusedElement, to: &candidates)
         }
 
         if let focusedApplication = elementAttribute(kAXFocusedApplicationAttribute as CFString, from: systemWideElement) {
-            candidates.append(focusedApplication)
+            appendIfExternal(focusedApplication, to: &candidates)
         }
 
         if let elementAtMouse = elementAtMousePosition(from: systemWideElement) {
-            candidates.append(elementAtMouse)
+            appendIfExternal(elementAtMouse, to: &candidates)
+        }
+
+        for application in runningApplicationElements() {
+            appendIfExternal(application, to: &candidates)
         }
 
         return candidates
     }
 
-    private func selectedText(in element: AXUIElement, maxDepth: Int) -> String? {
+    private func selectedText(
+        in element: AXUIElement,
+        maxDepth: Int,
+        visitedElements: inout Set<CFHashCode>,
+        remainingElements: inout Int
+    ) -> String? {
+        guard remainingElements > 0 else {
+            return nil
+        }
+
+        let elementHash = CFHash(element)
+        guard !visitedElements.contains(elementHash) else {
+            return nil
+        }
+
+        visitedElements.insert(elementHash)
+        remainingElements -= 1
+        AXUIElementSetMessagingTimeout(element, accessibilityTimeout)
+
         if let selectedText = selectedTextDirectly(from: element) {
             return selectedText
         }
@@ -78,7 +111,12 @@ final class SelectionReader {
         }
 
         for child in childElements(from: element) {
-            if let selectedText = selectedText(in: child, maxDepth: maxDepth - 1) {
+            if let selectedText = selectedText(
+                in: child,
+                maxDepth: maxDepth - 1,
+                visitedElements: &visitedElements,
+                remainingElements: &remainingElements
+            ) {
                 return selectedText
             }
         }
@@ -186,6 +224,51 @@ final class SelectionReader {
         }
 
         return (value as! AXUIElement)
+    }
+
+    private func runningApplicationElements() -> [AXUIElement] {
+        NSWorkspace.shared.runningApplications.compactMap { application in
+            guard application.processIdentifier != ProcessInfo.processInfo.processIdentifier,
+                  !application.isTerminated,
+                  application.activationPolicy == .regular || application.activationPolicy == .accessory else {
+                return nil
+            }
+
+            let element = AXUIElementCreateApplication(application.processIdentifier)
+            AXUIElementSetMessagingTimeout(element, accessibilityTimeout)
+            return element
+        }
+    }
+
+    private func appendIfExternal(_ element: AXUIElement, to candidates: inout [AXUIElement]) {
+        guard !isCurrentProcessElement(element) else {
+            return
+        }
+
+        let elementHash = CFHash(element)
+        guard !candidates.contains(where: { CFHash($0) == elementHash }) else {
+            return
+        }
+
+        AXUIElementSetMessagingTimeout(element, accessibilityTimeout)
+        candidates.append(element)
+    }
+
+    private func isCurrentProcessElement(_ element: AXUIElement) -> Bool {
+        guard let pid = processIdentifier(for: element) else {
+            return false
+        }
+
+        return pid == ProcessInfo.processInfo.processIdentifier
+    }
+
+    private func processIdentifier(for element: AXUIElement) -> pid_t? {
+        var pid = pid_t()
+        let result = AXUIElementGetPid(element, &pid)
+        guard result == .success else {
+            return nil
+        }
+        return pid
     }
 
     private func childElements(from element: AXUIElement) -> [AXUIElement] {

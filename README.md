@@ -35,7 +35,7 @@ The translation window is resizable.
 
 Japanese text is translated to English. Text without Japanese characters is translated to Japanese.
 
-The app does not use `Command + C` or the clipboard to read selected text. Some apps do not expose selected text through Accessibility; in those apps CodexTranslator will show a no-selection error.
+The app does not use `Command + C` or the clipboard to read selected text. It searches the focused element, the focused app, the element under the mouse, and other running apps for exposed selected text. Some apps do not expose selected text through Accessibility; in those apps CodexTranslator will show a no-selection error.
 
 Use the `Effort` segmented control in the panel to choose the Codex reasoning effort. When a translation is already displayed, changing the effort reruns that same source text. The app saves the selected value.
 

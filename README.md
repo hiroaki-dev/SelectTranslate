@@ -16,6 +16,8 @@ swift run CodexTranslator
 
 The app stays in the menu bar as `Codex` and shows a small ready panel on launch. Keep the terminal process running while you use the shortcut.
 
+The translation window is resizable.
+
 ## Usage
 
 1. Select text in any app.

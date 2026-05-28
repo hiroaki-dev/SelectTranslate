@@ -150,12 +150,13 @@ final class TranslationPanelController {
         let size = NSSize(width: 760, height: 420)
         let panel = NSPanel(
             contentRect: NSRect(origin: .zero, size: size),
-            styleMask: [.titled, .closable, .fullSizeContentView, .nonactivatingPanel],
+            styleMask: [.titled, .closable, .resizable, .fullSizeContentView, .nonactivatingPanel],
             backing: .buffered,
             defer: false
         )
 
         panel.title = "Codex Translate"
+        panel.minSize = NSSize(width: 720, height: 360)
         panel.titlebarAppearsTransparent = true
         panel.isMovableByWindowBackground = true
         panel.level = .floating
@@ -225,7 +226,8 @@ private struct TranslationOverlayView: View {
             }
         }
         .padding(20)
-        .frame(width: 760, height: 420)
+        .frame(minWidth: 720, minHeight: 360)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(.regularMaterial)
         .onChange(of: model.reasoningEffort) { newEffort in
             effortChanged(newEffort)
@@ -295,6 +297,7 @@ private struct TranslationOverlayView: View {
             simpleTextPane(title: "Original", text: model.sourceText, placeholder: "")
             translationPane
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
     private var errorBody: some View {
@@ -310,6 +313,7 @@ private struct TranslationOverlayView: View {
             }
             Spacer()
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
     private func simpleTextPane(title: String, text: String, placeholder: String) -> some View {

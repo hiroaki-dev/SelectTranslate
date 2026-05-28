@@ -143,14 +143,14 @@ final class TranslationPanelController {
         let panel = panel ?? makePanel()
         self.panel = panel
         position(panel)
-        panel.orderFrontRegardless()
+        panel.makeKeyAndOrderFront(nil)
     }
 
     private func makePanel() -> NSPanel {
         let size = NSSize(width: 760, height: 420)
         let panel = NSPanel(
             contentRect: NSRect(origin: .zero, size: size),
-            styleMask: [.titled, .closable, .resizable, .fullSizeContentView, .nonactivatingPanel],
+            styleMask: [.titled, .closable, .resizable, .fullSizeContentView],
             backing: .buffered,
             defer: false
         )
@@ -159,8 +159,8 @@ final class TranslationPanelController {
         panel.minSize = NSSize(width: 720, height: 360)
         panel.titlebarAppearsTransparent = true
         panel.isMovableByWindowBackground = true
-        panel.level = .floating
-        panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .transient]
+        panel.level = .normal
+        panel.collectionBehavior = [.fullScreenAuxiliary]
         panel.backgroundColor = .clear
         panel.isReleasedWhenClosed = false
         panel.contentView = NSHostingView(

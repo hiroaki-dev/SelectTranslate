@@ -26,6 +26,15 @@ enum TranslationDirection {
         }
     }
 
+    var reversed: TranslationDirection {
+        switch self {
+        case .englishToJapanese:
+            return .japaneseToEnglish
+        case .japaneseToEnglish:
+            return .englishToJapanese
+        }
+    }
+
     var promptInstruction: String {
         switch self {
         case .englishToJapanese:

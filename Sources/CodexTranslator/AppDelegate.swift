@@ -11,11 +11,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var statusItem: NSStatusItem?
     private var translationTask: Task<Void, Never>?
     private var currentTranslationRequest: TranslationRequest?
+    private var currentTranslationResult: TranslationResult?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
         panelController.onReasoningEffortChanged = { [weak self] effort in
-            self?.startRetranslation(effort: effort)
+            self?.startSourceRetranslation(effort: effort)
+        }
+        panelController.onBackTranslateRequested = { [weak self] in
+            self?.startBackTranslation()
         }
         configureStatusItem()
         registerHotKey()
@@ -97,7 +101,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
-    private func startRetranslation(effort: ReasoningEffort) {
+    private func startSourceRetranslation(effort: ReasoningEffort) {
         guard let request = currentTranslationRequest else { return }
         guard translationTask == nil else { return }
 
@@ -105,6 +109,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             guard let self else { return }
             defer { self.translationTask = nil }
             await self.translate(request: request, effort: effort)
+        }
+    }
+
+    private func startBackTranslation() {
+        guard let result = currentTranslationResult else { return }
+        guard translationTask == nil else { return }
+
+        translationTask = Task { [weak self] in
+            guard let self else { return }
+            defer { self.translationTask = nil }
+            await self.backTranslate(result: result, effort: self.panelController.reasoningEffort)
         }
     }
 
@@ -118,6 +133,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             await translate(request: request, effort: panelController.reasoningEffort)
         } catch SelectionReaderError.accessibilityPermissionRequired {
             currentTranslationRequest = nil
+            currentTranslationResult = nil
             panelController.showError(
                 source: nil,
                 title: "Accessibility Permission Required",
@@ -126,6 +142,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             selectionReader.requestAccessibilityPermission()
         } catch SelectionReaderError.noSelectedText {
             currentTranslationRequest = nil
+            currentTranslationResult = nil
             panelController.showError(
                 source: nil,
                 title: "No Selected Text",
@@ -142,11 +159,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func translate(request: TranslationRequest, effort: ReasoningEffort) async {
         do {
+            currentTranslationResult = nil
             panelController.showLoading(source: request.sourceText, direction: request.direction)
             let translatedText = try await translator.translate(
                 request.sourceText,
                 direction: request.direction,
                 effort: effort
+            )
+            currentTranslationResult = TranslationResult(
+                sourceText: request.sourceText,
+                direction: request.direction,
+                translatedText: translatedText
             )
             panelController.showResult(
                 source: request.sourceText,
@@ -161,9 +184,29 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             )
         }
     }
+
+    private func backTranslate(result: TranslationResult, effort: ReasoningEffort) async {
+        do {
+            panelController.showBackTranslationLoading()
+            let backTranslatedText = try await translator.translate(
+                result.translatedText,
+                direction: result.direction.reversed,
+                effort: effort
+            )
+            panelController.showBackTranslationResult(backTranslatedText)
+        } catch {
+            panelController.showBackTranslationError(error.localizedDescription)
+        }
+    }
 }
 
 private struct TranslationRequest {
     let sourceText: String
     let direction: TranslationDirection
+}
+
+private struct TranslationResult {
+    let sourceText: String
+    let direction: TranslationDirection
+    let translatedText: String
 }

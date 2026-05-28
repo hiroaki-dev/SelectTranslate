@@ -10,8 +10,13 @@ final class TranslationPanelModel: ObservableObject {
     @Published var directionLabel: String = ""
     @Published var title: String = "Codex Translate"
     @Published var message: String = ""
+    @Published var backTranslatedText: String = ""
+    @Published var backTranslationMessage: String = ""
     @Published var isLoading: Bool = false
+    @Published var isBackTranslating: Bool = false
+    @Published var isBackTranslationError: Bool = false
     @Published var isError: Bool = false
+    @Published var canBackTranslate: Bool = false
     @Published var reasoningEffort: ReasoningEffort {
         didSet {
             UserDefaults.standard.set(reasoningEffort.rawValue, forKey: Self.effortDefaultsKey)
@@ -30,6 +35,7 @@ final class TranslationPanelController {
     private var panel: NSPanel?
 
     var onReasoningEffortChanged: ((ReasoningEffort) -> Void)?
+    var onBackTranslateRequested: (() -> Void)?
 
     var reasoningEffort: ReasoningEffort {
         model.reasoningEffort
@@ -41,8 +47,13 @@ final class TranslationPanelController {
         model.directionLabel = direction.label
         model.title = "Translating"
         model.message = "codex exec is translating the selected text."
+        model.backTranslatedText = ""
+        model.backTranslationMessage = ""
         model.isLoading = true
+        model.isBackTranslating = false
+        model.isBackTranslationError = false
         model.isError = false
+        model.canBackTranslate = false
         showPanel()
     }
 
@@ -52,8 +63,13 @@ final class TranslationPanelController {
         model.directionLabel = direction.label
         model.title = "Codex Translate"
         model.message = ""
+        model.backTranslatedText = ""
+        model.backTranslationMessage = ""
         model.isLoading = false
+        model.isBackTranslating = false
+        model.isBackTranslationError = false
         model.isError = false
+        model.canBackTranslate = true
         showPanel()
     }
 
@@ -63,8 +79,37 @@ final class TranslationPanelController {
         model.directionLabel = ""
         model.title = title
         model.message = message
+        model.backTranslatedText = ""
+        model.backTranslationMessage = ""
         model.isLoading = false
+        model.isBackTranslating = false
+        model.isBackTranslationError = false
         model.isError = true
+        model.canBackTranslate = false
+        showPanel()
+    }
+
+    func showBackTranslationLoading() {
+        model.backTranslatedText = ""
+        model.backTranslationMessage = "Translating the result back to the original language."
+        model.isBackTranslating = true
+        model.isBackTranslationError = false
+        showPanel()
+    }
+
+    func showBackTranslationResult(_ text: String) {
+        model.backTranslatedText = text
+        model.backTranslationMessage = ""
+        model.isBackTranslating = false
+        model.isBackTranslationError = false
+        showPanel()
+    }
+
+    func showBackTranslationError(_ message: String) {
+        model.backTranslatedText = ""
+        model.backTranslationMessage = message
+        model.isBackTranslating = false
+        model.isBackTranslationError = true
         showPanel()
     }
 
@@ -84,8 +129,13 @@ final class TranslationPanelController {
         model.directionLabel = "Control + F"
         model.title = "Codex Translator is Running"
         model.message = ""
+        model.backTranslatedText = ""
+        model.backTranslationMessage = ""
         model.isLoading = false
+        model.isBackTranslating = false
+        model.isBackTranslationError = false
         model.isError = false
+        model.canBackTranslate = false
         showPanel()
     }
 
@@ -117,6 +167,9 @@ final class TranslationPanelController {
                 model: model,
                 effortChanged: { [weak self] effort in
                     self?.onReasoningEffortChanged?(effort)
+                },
+                backTranslate: { [weak self] in
+                    self?.onBackTranslateRequested?()
                 },
                 close: { [weak panel] in
                     panel?.close()
@@ -158,6 +211,7 @@ final class TranslationPanelController {
 private struct TranslationOverlayView: View {
     @ObservedObject var model: TranslationPanelModel
     let effortChanged: (ReasoningEffort) -> Void
+    let backTranslate: () -> Void
     let close: () -> Void
 
     var body: some View {
@@ -231,15 +285,15 @@ private struct TranslationOverlayView: View {
             .pickerStyle(.segmented)
             .labelsHidden()
             .frame(width: 250)
-            .disabled(model.isLoading)
+            .disabled(model.isLoading || model.isBackTranslating)
             .help("Reasoning effort passed to codex exec")
         }
     }
 
     private var translationBody: some View {
         HStack(alignment: .top, spacing: 12) {
-            textPane(title: "Original", text: model.sourceText, placeholder: "")
-            textPane(title: "Translation", text: model.translatedText, placeholder: model.message)
+            simpleTextPane(title: "Original", text: model.sourceText, placeholder: "")
+            translationPane
         }
     }
 
@@ -252,13 +306,13 @@ private struct TranslationOverlayView: View {
                 .fixedSize(horizontal: false, vertical: true)
 
             if !model.sourceText.isEmpty {
-                textPane(title: "Original", text: model.sourceText, placeholder: "")
+                simpleTextPane(title: "Original", text: model.sourceText, placeholder: "")
             }
             Spacer()
         }
     }
 
-    private func textPane(title: String, text: String, placeholder: String) -> some View {
+    private func simpleTextPane(title: String, text: String, placeholder: String) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
                 Text(title)
@@ -266,10 +320,37 @@ private struct TranslationOverlayView: View {
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
                 Spacer()
-                if title == "Translation", !text.isEmpty {
+            }
+            .frame(height: 28)
+
+            textBox(text: text, placeholder: placeholder)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    private var translationPane: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Text("Translation")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                Spacer()
+
+                if model.canBackTranslate {
+                    Button(action: backTranslate) {
+                        Image(systemName: "arrow.triangle.2.circlepath")
+                            .frame(width: 24, height: 24)
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(model.isLoading || model.isBackTranslating)
+                    .help("Translate back to the original language")
+                }
+
+                if !model.translatedText.isEmpty {
                     Button {
                         NSPasteboard.general.clearContents()
-                        NSPasteboard.general.setString(text, forType: .string)
+                        NSPasteboard.general.setString(model.translatedText, forType: .string)
                     } label: {
                         Image(systemName: "doc.on.doc")
                             .frame(width: 24, height: 24)
@@ -280,13 +361,35 @@ private struct TranslationOverlayView: View {
             }
             .frame(height: 28)
 
-            ScrollView {
-                Text(text.isEmpty ? placeholder : text)
-                    .font(.system(size: 15))
-                    .foregroundStyle(text.isEmpty ? .secondary : .primary)
-                    .textSelection(.enabled)
-                    .frame(maxWidth: .infinity, alignment: .leading)
+            VStack(alignment: .leading, spacing: 0) {
+                scrollText(
+                    text: model.translatedText,
+                    placeholder: model.message,
+                    isError: false
+                )
+                .frame(maxHeight: .infinity)
+
+                if shouldShowBackTranslation {
+                    Divider()
+                    VStack(alignment: .leading, spacing: 8) {
+                        HStack(spacing: 8) {
+                            Text("Back translation")
+                                .font(.system(size: 12, weight: .semibold))
+                                .foregroundStyle(.secondary)
+                            if model.isBackTranslating {
+                                ProgressView()
+                                    .controlSize(.small)
+                            }
+                        }
+                        scrollText(
+                            text: model.backTranslatedText,
+                            placeholder: model.backTranslationMessage,
+                            isError: model.isBackTranslationError
+                        )
+                    }
                     .padding(12)
+                    .frame(maxHeight: 150)
+                }
             }
             .background(
                 RoundedRectangle(cornerRadius: 8)
@@ -298,6 +401,33 @@ private struct TranslationOverlayView: View {
             )
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    private var shouldShowBackTranslation: Bool {
+        model.isBackTranslating || !model.backTranslatedText.isEmpty || !model.backTranslationMessage.isEmpty
+    }
+
+    private func textBox(text: String, placeholder: String) -> some View {
+        scrollText(text: text, placeholder: placeholder, isError: false)
+            .background(
+                RoundedRectangle(cornerRadius: 8)
+                    .fill(Color(nsColor: .textBackgroundColor).opacity(0.82))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 8)
+                    .stroke(Color(nsColor: .separatorColor), lineWidth: 1)
+            )
+    }
+
+    private func scrollText(text: String, placeholder: String, isError: Bool) -> some View {
+        ScrollView {
+            Text(text.isEmpty ? placeholder : text)
+                .font(.system(size: 15))
+                .foregroundStyle(text.isEmpty ? (isError ? .red : .secondary) : .primary)
+                .textSelection(.enabled)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(12)
+        }
     }
 }
 

@@ -26,6 +26,8 @@ Japanese text is translated to English. Text without Japanese characters is tran
 
 Use the `Effort` segmented control in the panel to choose the Codex reasoning effort. When a translation is already displayed, changing the effort reruns that same source text. The app saves the selected value.
 
+Use the retranslation button in the `Translation` header to translate the current translation back to the original language. The back translation appears at the bottom of the `Translation` area.
+
 ## Permissions
 
 macOS Accessibility permission is required so the app can send `Command + C` to the frontmost app.

@@ -29,6 +29,8 @@ final class TranslationPanelController {
     private let model = TranslationPanelModel()
     private var panel: NSPanel?
 
+    var onReasoningEffortChanged: ((ReasoningEffort) -> Void)?
+
     var reasoningEffort: ReasoningEffort {
         model.reasoningEffort
     }
@@ -110,9 +112,17 @@ final class TranslationPanelController {
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .transient]
         panel.backgroundColor = .clear
         panel.isReleasedWhenClosed = false
-        panel.contentView = NSHostingView(rootView: TranslationOverlayView(model: model) { [weak panel] in
-            panel?.close()
-        })
+        panel.contentView = NSHostingView(
+            rootView: TranslationOverlayView(
+                model: model,
+                effortChanged: { [weak self] effort in
+                    self?.onReasoningEffortChanged?(effort)
+                },
+                close: { [weak panel] in
+                    panel?.close()
+                }
+            )
+        )
 
         return panel
     }
@@ -147,6 +157,7 @@ final class TranslationPanelController {
 
 private struct TranslationOverlayView: View {
     @ObservedObject var model: TranslationPanelModel
+    let effortChanged: (ReasoningEffort) -> Void
     let close: () -> Void
 
     var body: some View {
@@ -162,6 +173,9 @@ private struct TranslationOverlayView: View {
         .padding(20)
         .frame(width: 760, height: 420)
         .background(.regularMaterial)
+        .onChange(of: model.reasoningEffort) { newEffort in
+            effortChanged(newEffort)
+        }
     }
 
     private var header: some View {

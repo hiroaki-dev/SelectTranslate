@@ -10,9 +10,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var hotKeyManager: HotKeyManager?
     private var statusItem: NSStatusItem?
     private var translationTask: Task<Void, Never>?
+    private var currentTranslationRequest: TranslationRequest?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
+        panelController.onReasoningEffortChanged = { [weak self] effort in
+            self?.startRetranslation(effort: effort)
+        }
         configureStatusItem()
         registerHotKey()
         panelController.showReady(isAccessibilityTrusted: selectionReader.isAccessibilityTrusted)
@@ -93,16 +97,27 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
+    private func startRetranslation(effort: ReasoningEffort) {
+        guard let request = currentTranslationRequest else { return }
+        guard translationTask == nil else { return }
+
+        translationTask = Task { [weak self] in
+            guard let self else { return }
+            defer { self.translationTask = nil }
+            await self.translate(request: request, effort: effort)
+        }
+    }
+
     private func translateCurrentSelection() async {
         do {
             let sourceText = try await selectionReader.readSelectedText()
             let direction = TranslationDirection.detect(sourceText)
-            panelController.showLoading(source: sourceText, direction: direction)
+            let request = TranslationRequest(sourceText: sourceText, direction: direction)
+            currentTranslationRequest = request
 
-            let effort = panelController.reasoningEffort
-            let translatedText = try await translator.translate(sourceText, direction: direction, effort: effort)
-            panelController.showResult(source: sourceText, translation: translatedText, direction: direction)
+            await translate(request: request, effort: panelController.reasoningEffort)
         } catch SelectionReaderError.accessibilityPermissionRequired {
+            currentTranslationRequest = nil
             panelController.showError(
                 source: nil,
                 title: "Accessibility Permission Required",
@@ -110,6 +125,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             )
             selectionReader.requestAccessibilityPermission()
         } catch SelectionReaderError.noSelectedText {
+            currentTranslationRequest = nil
             panelController.showError(
                 source: nil,
                 title: "No Selected Text",
@@ -123,4 +139,31 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             )
         }
     }
+
+    private func translate(request: TranslationRequest, effort: ReasoningEffort) async {
+        do {
+            panelController.showLoading(source: request.sourceText, direction: request.direction)
+            let translatedText = try await translator.translate(
+                request.sourceText,
+                direction: request.direction,
+                effort: effort
+            )
+            panelController.showResult(
+                source: request.sourceText,
+                translation: translatedText,
+                direction: request.direction
+            )
+        } catch {
+            panelController.showError(
+                source: request.sourceText,
+                title: "Translation Failed",
+                message: error.localizedDescription
+            )
+        }
+    }
+}
+
+private struct TranslationRequest {
+    let sourceText: String
+    let direction: TranslationDirection
 }

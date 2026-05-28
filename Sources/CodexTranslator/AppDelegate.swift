@@ -131,6 +131,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func startTranslation() {
+        panelController.activateOnNextShow()
+
         guard translationTask == nil else {
             panelController.showError(
                 source: nil,

@@ -33,12 +33,17 @@ final class TranslationPanelModel: ObservableObject {
 final class TranslationPanelController {
     private let model = TranslationPanelModel()
     private var panel: NSPanel?
+    private var shouldActivateOnNextShow = false
 
     var onReasoningEffortChanged: ((ReasoningEffort) -> Void)?
     var onBackTranslateRequested: (() -> Void)?
 
     var reasoningEffort: ReasoningEffort {
         model.reasoningEffort
+    }
+
+    func activateOnNextShow() {
+        shouldActivateOnNextShow = true
     }
 
     func showLoading(source: String, direction: TranslationDirection) {
@@ -143,6 +148,10 @@ final class TranslationPanelController {
         let panel = panel ?? makePanel()
         self.panel = panel
         position(panel)
+        if shouldActivateOnNextShow {
+            shouldActivateOnNextShow = false
+            NSApp.activate(ignoringOtherApps: true)
+        }
         panel.makeKeyAndOrderFront(nil)
     }
 

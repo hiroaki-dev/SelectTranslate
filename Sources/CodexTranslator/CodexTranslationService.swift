@@ -71,7 +71,8 @@ final class CodexTranslationService {
     }
 
     func translate(_ text: String, direction: TranslationDirection, effort: ReasoningEffort) async throws -> String {
-        try await Task.detached(priority: .userInitiated) { [workspacePath, effort] in
+        let promptTemplate = PromptSettings.template
+        return try await Task.detached(priority: .userInitiated) { [workspacePath, effort, promptTemplate] in
             let outputURL = FileManager.default.temporaryDirectory
                 .appendingPathComponent("CodexTranslator-\(UUID().uuidString).txt")
 
@@ -79,7 +80,7 @@ final class CodexTranslationService {
                 try? FileManager.default.removeItem(at: outputURL)
             }
 
-            let prompt = Self.makePrompt(text: text, direction: direction)
+            let prompt = PromptSettings.render(template: promptTemplate, text: text, direction: direction)
             let process = Process()
             process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
             process.arguments = [
@@ -132,23 +133,6 @@ final class CodexTranslationService {
 
             return translated
         }.value
-    }
-
-    private static func makePrompt(text: String, direction: TranslationDirection) -> String {
-        """
-        You are a precise translation engine.
-
-        \(direction.promptInstruction)
-
-        Rules:
-        - Return only the translated text.
-        - Do not add explanations, alternatives, markdown fences, labels, quotes, or notes.
-        - Preserve paragraph breaks, list structure, URLs, code identifiers, and placeholders where possible.
-        - If the source text contains a mixture of languages, translate only the main natural-language content.
-
-        Source text:
-        \(text)
-        """
     }
 
     private static func processEnvironment() -> [String: String] {

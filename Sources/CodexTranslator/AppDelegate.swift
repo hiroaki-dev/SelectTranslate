@@ -6,6 +6,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let selectionReader = SelectionReader()
     private let translator = CodexTranslationService()
     private let panelController = TranslationPanelController()
+    private let settingsWindowController = SettingsWindowController()
 
     private var hotKeyManager: HotKeyManager?
     private var statusItem: NSStatusItem?
@@ -37,6 +38,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         let menu = NSMenu()
         menu.addItem(makeMenuItem(title: "Translate Selection", action: #selector(translateSelectionFromMenu)))
+        menu.addItem(makeMenuItem(title: "Settings...", action: #selector(openSettings), keyEquivalent: ","))
         menu.addItem(makeMenuItem(title: "Open Accessibility Settings", action: #selector(openAccessibilitySettings)))
         menu.addItem(.separator())
         menu.addItem(makeMenuItem(title: "Quit", action: #selector(quit), keyEquivalent: "q"))
@@ -71,6 +73,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc private func translateSelectionFromMenu() {
         startTranslation()
+    }
+
+    @objc private func openSettings() {
+        settingsWindowController.show()
     }
 
     @objc private func openAccessibilitySettings() {

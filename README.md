@@ -30,6 +30,8 @@ Use the `Effort` segmented control in the panel to choose the Codex reasoning ef
 
 Use the retranslation button in the `Translation` header to translate the current translation back to the original language. The back translation appears at the bottom of the `Translation` area.
 
+Use `Codex` > `Settings...` to edit the prompt template. The template supports `{{instruction}}` for the current translation direction and `{{text}}` for the selected text.
+
 ## Permissions
 
 macOS Accessibility permission is required so the app can send `Command + C` to the frontmost app.
@@ -56,3 +58,5 @@ The selected panel effort is passed as:
 ```sh
 -c 'model_reasoning_effort="<effort>"'
 ```
+
+The saved prompt template is rendered and sent to `codex exec` over stdin.

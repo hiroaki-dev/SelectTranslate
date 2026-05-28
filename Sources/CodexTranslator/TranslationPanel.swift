@@ -223,7 +223,7 @@ private struct TranslationOverlayView: View {
     }
 
     private var translationBody: some View {
-        HStack(spacing: 12) {
+        HStack(alignment: .top, spacing: 12) {
             textPane(title: "Original", text: model.sourceText, placeholder: "")
             textPane(title: "Translation", text: model.translatedText, placeholder: model.message)
         }
@@ -250,6 +250,7 @@ private struct TranslationOverlayView: View {
                 Text(title)
                     .font(.system(size: 12, weight: .semibold))
                     .foregroundStyle(.secondary)
+                    .lineLimit(1)
                 Spacer()
                 if title == "Translation", !text.isEmpty {
                     Button {
@@ -263,6 +264,7 @@ private struct TranslationOverlayView: View {
                     .help("Copy translation")
                 }
             }
+            .frame(height: 28)
 
             ScrollView {
                 Text(text.isEmpty ? placeholder : text)

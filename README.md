@@ -49,10 +49,12 @@ macOS Accessibility permission is required so the app can read selected text fro
 
 If the shortcut shows a permission error:
 
-1. Open the `Codex` menu bar item.
-2. Choose `Open Accessibility Settings`.
-3. Enable the running `CodexTranslator` executable.
+1. Open `CodexTranslator` > `Actions` > `Open Accessibility Settings`.
+2. Enable `CodexTranslator`.
+3. Quit and reopen CodexTranslator.
 4. Press `Control + F` again.
+
+`swift run CodexTranslator` and `open build/CodexTranslator.app` are treated as different apps by macOS privacy permissions. Grant permission to the `.app` version when using the normal launch flow.
 
 ## Codex command
 

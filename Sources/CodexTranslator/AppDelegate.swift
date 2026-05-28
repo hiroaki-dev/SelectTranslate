@@ -119,7 +119,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @objc private func openAccessibilitySettings() {
-        selectionReader.requestAccessibilityPermission()
         if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility") {
             NSWorkspace.shared.open(url)
         }
@@ -184,7 +183,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 title: "Accessibility Permission Required",
                 message: "Allow this process in System Settings > Privacy & Security > Accessibility, then press Control + F again."
             )
-            selectionReader.requestAccessibilityPermission()
         } catch SelectionReaderError.noSelectedText {
             currentTranslationRequest = nil
             currentTranslationResult = nil

@@ -194,7 +194,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             panelController.showError(
                 source: nil,
                 title: "No Selected Text",
-                message: "Select text in the frontmost app before pressing Control + F."
+                message: "Select text before pressing Control + F. Some apps do not expose selected text through Accessibility."
             )
         } catch {
             panelController.showError(

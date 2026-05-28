@@ -45,7 +45,7 @@ Use `Codex` > `Settings...` to edit the prompt template. The template supports `
 
 ## Permissions
 
-macOS Accessibility permission is required so the app can read selected text from the frontmost app.
+macOS Accessibility permission is required so the app can read selected text from the current focused element or app.
 
 If the shortcut shows a permission error:
 

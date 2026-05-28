@@ -1,4 +1,5 @@
 import ApplicationServices
+import AppKit
 import Foundation
 
 enum SelectionReaderError: LocalizedError {
@@ -10,7 +11,7 @@ enum SelectionReaderError: LocalizedError {
         case .accessibilityPermissionRequired:
             return "Accessibility permission is required to read the selected text."
         case .noSelectedText:
-            return "No selected text is exposed by the frontmost app through Accessibility."
+            return "No selected text is exposed through Accessibility."
         }
     }
 }
@@ -38,25 +39,67 @@ final class SelectionReader {
         }
 
         let systemWideElement = AXUIElementCreateSystemWide()
-        guard let focusedRef = copyAttribute(kAXFocusedUIElementAttribute as CFString, from: systemWideElement),
-              CFGetTypeID(focusedRef) == AXUIElementGetTypeID() else {
-            throw SelectionReaderError.noSelectedText
-        }
-        let focusedElement = focusedRef as! AXUIElement
+        let candidates = candidateElements(from: systemWideElement)
 
-        if let selectedText = selectedTextAttribute(from: focusedElement) {
-            return selectedText
-        }
-
-        if let selectedText = selectedTextFromRangeParameter(from: focusedElement) {
-            return selectedText
-        }
-
-        if let selectedText = selectedTextFromValueRange(from: focusedElement) {
-            return selectedText
+        for candidate in candidates {
+            if let selectedText = selectedText(in: candidate, maxDepth: 5) {
+                return selectedText
+            }
         }
 
         throw SelectionReaderError.noSelectedText
+    }
+
+    private func candidateElements(from systemWideElement: AXUIElement) -> [AXUIElement] {
+        var candidates: [AXUIElement] = []
+
+        if let focusedElement = elementAttribute(kAXFocusedUIElementAttribute as CFString, from: systemWideElement) {
+            candidates.append(focusedElement)
+        }
+
+        if let focusedApplication = elementAttribute(kAXFocusedApplicationAttribute as CFString, from: systemWideElement) {
+            candidates.append(focusedApplication)
+        }
+
+        if let elementAtMouse = elementAtMousePosition(from: systemWideElement) {
+            candidates.append(elementAtMouse)
+        }
+
+        return candidates
+    }
+
+    private func selectedText(in element: AXUIElement, maxDepth: Int) -> String? {
+        if let selectedText = selectedTextDirectly(from: element) {
+            return selectedText
+        }
+
+        guard maxDepth > 0 else {
+            return nil
+        }
+
+        for child in childElements(from: element) {
+            if let selectedText = selectedText(in: child, maxDepth: maxDepth - 1) {
+                return selectedText
+            }
+        }
+
+        return nil
+    }
+
+    private func selectedTextDirectly(from element: AXUIElement) -> String? {
+        if let selectedText = selectedTextAttribute(from: element) {
+            return selectedText
+        }
+
+        if let selectedText = selectedTextFromRangeParameter(from: element) {
+            return selectedText
+        }
+
+        if let selectedText = selectedTextFromValueRange(from: element) {
+            return selectedText
+        }
+
+        return nil
     }
 
     private func selectedTextAttribute(from element: AXUIElement) -> String? {
@@ -134,6 +177,68 @@ final class SelectionReader {
             return nil
         }
         return value
+    }
+
+    private func elementAttribute(_ attribute: CFString, from element: AXUIElement) -> AXUIElement? {
+        guard let value = copyAttribute(attribute, from: element),
+              CFGetTypeID(value) == AXUIElementGetTypeID() else {
+            return nil
+        }
+
+        return (value as! AXUIElement)
+    }
+
+    private func childElements(from element: AXUIElement) -> [AXUIElement] {
+        let attributes = [
+            kAXFocusedUIElementAttribute,
+            kAXFocusedWindowAttribute,
+            kAXSelectedChildrenAttribute,
+            kAXVisibleChildrenAttribute,
+            kAXChildrenAttribute,
+            kAXWindowsAttribute
+        ].map { $0 as CFString }
+
+        return attributes.flatMap { childElements(for: $0, from: element) }
+    }
+
+    private func childElements(for attribute: CFString, from element: AXUIElement) -> [AXUIElement] {
+        guard let value = copyAttribute(attribute, from: element) else {
+            return []
+        }
+
+        if CFGetTypeID(value) == AXUIElementGetTypeID() {
+            return [value as! AXUIElement]
+        }
+
+        guard CFGetTypeID(value) == CFArrayGetTypeID(),
+              let array = value as? [Any] else {
+            return []
+        }
+
+        return array.compactMap { item in
+            guard let item = item as CFTypeRef?,
+                  CFGetTypeID(item) == AXUIElementGetTypeID() else {
+                return nil
+            }
+            return (item as! AXUIElement)
+        }
+    }
+
+    private func elementAtMousePosition(from systemWideElement: AXUIElement) -> AXUIElement? {
+        let mouseLocation = NSEvent.mouseLocation
+        var elementRef: AXUIElement?
+        let result = AXUIElementCopyElementAtPosition(
+            systemWideElement,
+            Float(mouseLocation.x),
+            Float(mouseLocation.y),
+            &elementRef
+        )
+
+        guard result == .success else {
+            return nil
+        }
+
+        return elementRef
     }
 
     private func nonEmpty(_ text: String) -> String? {

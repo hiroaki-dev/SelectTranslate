@@ -50,7 +50,7 @@ macOS Accessibility permission is required so the app can read selected text fro
 If the shortcut shows a permission error:
 
 1. Open `CodexTranslator` > `Actions` > `Open Accessibility Settings`.
-2. Enable `CodexTranslator`.
+2. Approve the macOS prompt, or enable `CodexTranslator` in the Accessibility list.
 3. Quit and reopen CodexTranslator.
 4. Press `Control + F` again.
 

@@ -64,15 +64,17 @@ enum CodexTranslationError: LocalizedError {
 }
 
 final class CodexTranslationService {
-    private let workspacePath: String
+    private let workspaceURL: URL
 
-    init(workspacePath: String = FileManager.default.currentDirectoryPath) {
-        self.workspacePath = workspacePath
+    init(workspaceURL: URL = CodexTranslationService.defaultWorkspaceURL()) {
+        self.workspaceURL = workspaceURL
     }
 
     func translate(_ text: String, direction: TranslationDirection, effort: ReasoningEffort) async throws -> String {
         let promptTemplate = PromptSettings.template
-        return try await Task.detached(priority: .userInitiated) { [workspacePath, effort, promptTemplate] in
+        return try await Task.detached(priority: .userInitiated) { [workspaceURL, effort, promptTemplate] in
+            try FileManager.default.createDirectory(at: workspaceURL, withIntermediateDirectories: true)
+
             let outputURL = FileManager.default.temporaryDirectory
                 .appendingPathComponent("CodexTranslator-\(UUID().uuidString).txt")
 
@@ -83,6 +85,7 @@ final class CodexTranslationService {
             let prompt = PromptSettings.render(template: promptTemplate, text: text, direction: direction)
             let process = Process()
             process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
+            process.currentDirectoryURL = workspaceURL
             process.arguments = [
                 "codex",
                 "exec",
@@ -90,12 +93,12 @@ final class CodexTranslationService {
                 "-c",
                 "model_reasoning_effort=\"\(effort.rawValue)\"",
                 "--cd",
-                workspacePath,
+                workspaceURL.path,
                 "--output-last-message",
                 outputURL.path,
                 "-"
             ]
-            process.environment = Self.processEnvironment()
+            process.environment = Self.processEnvironment(workspacePath: workspaceURL.path)
 
             let input = Pipe()
             let stdout = Pipe()
@@ -135,7 +138,18 @@ final class CodexTranslationService {
         }.value
     }
 
-    private static func processEnvironment() -> [String: String] {
+    private static func defaultWorkspaceURL() -> URL {
+        let baseURL = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
+            ?? FileManager.default.temporaryDirectory
+        let workspaceURL = baseURL
+            .appendingPathComponent("CodexTranslator", isDirectory: true)
+            .appendingPathComponent("CodexWorkspace", isDirectory: true)
+
+        try? FileManager.default.createDirectory(at: workspaceURL, withIntermediateDirectories: true)
+        return workspaceURL
+    }
+
+    private static func processEnvironment(workspacePath: String) -> [String: String] {
         var environment = ProcessInfo.processInfo.environment
         let fallbackPath = "/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
         if let existingPath = environment["PATH"], !existingPath.isEmpty {
@@ -143,6 +157,7 @@ final class CodexTranslationService {
         } else {
             environment["PATH"] = fallbackPath
         }
+        environment["PWD"] = workspacePath
         return environment
     }
 }

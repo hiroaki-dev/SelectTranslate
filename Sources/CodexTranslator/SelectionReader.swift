@@ -21,10 +21,15 @@ final class SelectionReader {
         AXIsProcessTrusted()
     }
 
-    func requestAccessibilityPermissionPrompt() {
+    @discardableResult
+    func requestAccessibilityPermissionPromptIfNeeded() -> Bool {
+        guard !isAccessibilityTrusted else {
+            return true
+        }
+
         let key = kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String
         let options = [key: true] as CFDictionary
-        _ = AXIsProcessTrustedWithOptions(options)
+        return AXIsProcessTrustedWithOptions(options)
     }
 
     func readSelectedText() async throws -> String {

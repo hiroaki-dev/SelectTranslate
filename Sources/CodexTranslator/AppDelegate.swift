@@ -13,6 +13,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var translationTask: Task<Void, Never>?
     private var currentTranslationRequest: TranslationRequest?
     private var currentTranslationResult: TranslationResult?
+    private var didAutoRequestAccessibilityPermission = false
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.regular)
@@ -119,7 +120,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @objc private func openAccessibilitySettings() {
-        selectionReader.requestAccessibilityPermissionPrompt()
+        selectionReader.requestAccessibilityPermissionPromptIfNeeded()
         if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility") {
             NSWorkspace.shared.open(url)
         }
@@ -179,10 +180,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         } catch SelectionReaderError.accessibilityPermissionRequired {
             currentTranslationRequest = nil
             currentTranslationResult = nil
+            requestAccessibilityPermissionFromShortcutIfNeeded()
             panelController.showError(
                 source: nil,
                 title: "Accessibility Permission Required",
-                message: "Allow this process in System Settings > Privacy & Security > Accessibility, then press Control + F again."
+                message: "Allow CodexTranslator in System Settings > Privacy & Security > Accessibility, then press Control + F again."
             )
         } catch SelectionReaderError.noSelectedText {
             currentTranslationRequest = nil
@@ -199,6 +201,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 message: error.localizedDescription
             )
         }
+    }
+
+    private func requestAccessibilityPermissionFromShortcutIfNeeded() {
+        guard !selectionReader.isAccessibilityTrusted, !didAutoRequestAccessibilityPermission else {
+            return
+        }
+
+        didAutoRequestAccessibilityPermission = true
+        selectionReader.requestAccessibilityPermissionPromptIfNeeded()
     }
 
     private func translate(request: TranslationRequest, effort: ReasoningEffort) async {

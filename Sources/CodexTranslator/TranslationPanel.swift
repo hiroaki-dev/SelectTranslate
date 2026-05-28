@@ -206,13 +206,16 @@ private struct TranslationOverlayView: View {
             Text("Effort")
                 .font(.system(size: 12, weight: .medium))
                 .foregroundStyle(.secondary)
+                .lineLimit(1)
+                .fixedSize(horizontal: true, vertical: false)
 
-            Picker("Effort", selection: $model.reasoningEffort) {
+            Picker("", selection: $model.reasoningEffort) {
                 ForEach(ReasoningEffort.allCases) { effort in
                     Text(effort.label).tag(effort)
                 }
             }
             .pickerStyle(.segmented)
+            .labelsHidden()
             .frame(width: 250)
             .disabled(model.isLoading)
             .help("Reasoning effort passed to codex exec")

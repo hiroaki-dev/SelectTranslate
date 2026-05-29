@@ -14,6 +14,7 @@ fi
 "$VENV/bin/python3" -m pip install -U mlx-lm numba
 HF_HOME="$HF_HOME" "$VENV/bin/python3" -m mlx_lm generate \
   --model mlx-community/plamo-2-translate \
+  --trust-remote-code \
   --extra-eos-token '<|plamo:op|>' \
   --prompt 'こんにちは'
 

@@ -214,6 +214,7 @@ final class CodexTranslationService {
                 "generate",
                 "--model",
                 PlamoSetupService.modelID,
+                "--trust-remote-code",
                 "--extra-eos-token",
                 PlamoSetupService.extraEOSToken,
                 "--prompt",

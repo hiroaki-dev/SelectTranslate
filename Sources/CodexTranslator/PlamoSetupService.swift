@@ -69,6 +69,7 @@ enum PlamoSetupService {
                 "generate",
                 "--model",
                 modelID,
+                "--trust-remote-code",
                 "--extra-eos-token",
                 extraEOSToken,
                 "--prompt",

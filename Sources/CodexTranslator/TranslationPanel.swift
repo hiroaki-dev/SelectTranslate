@@ -4,6 +4,7 @@ import SwiftUI
 @MainActor
 final class TranslationPanelModel: ObservableObject {
     private static let effortDefaultsKey = "reasoningEffort"
+    private static let providerDefaultsKey = "translationProvider"
 
     @Published var sourceText: String = ""
     @Published var translatedText: String = ""
@@ -22,10 +23,17 @@ final class TranslationPanelModel: ObservableObject {
             UserDefaults.standard.set(reasoningEffort.rawValue, forKey: Self.effortDefaultsKey)
         }
     }
+    @Published var translationProvider: TranslationProvider {
+        didSet {
+            UserDefaults.standard.set(translationProvider.rawValue, forKey: Self.providerDefaultsKey)
+        }
+    }
 
     init() {
         let savedValue = UserDefaults.standard.string(forKey: Self.effortDefaultsKey)
         reasoningEffort = savedValue.flatMap(ReasoningEffort.init(rawValue:)) ?? .low
+        let savedProvider = UserDefaults.standard.string(forKey: Self.providerDefaultsKey)
+        translationProvider = savedProvider.flatMap(TranslationProvider.init(rawValue:)) ?? .codex
     }
 }
 
@@ -36,22 +44,27 @@ final class TranslationPanelController {
     private var shouldActivateOnNextShow = false
 
     var onReasoningEffortChanged: ((ReasoningEffort) -> Void)?
+    var onTranslationProviderChanged: ((TranslationProvider) -> Void)?
     var onBackTranslateRequested: (() -> Void)?
 
     var reasoningEffort: ReasoningEffort {
         model.reasoningEffort
     }
 
+    var translationProvider: TranslationProvider {
+        model.translationProvider
+    }
+
     func activateOnNextShow() {
         shouldActivateOnNextShow = true
     }
 
-    func showLoading(source: String, direction: TranslationDirection) {
+    func showLoading(source: String, direction: TranslationDirection, provider: TranslationProvider) {
         model.sourceText = source
         model.translatedText = ""
         model.directionLabel = direction.label
         model.title = "Translating"
-        model.message = "codex exec is translating the selected text."
+        model.message = "\(provider.description) is translating the selected text."
         model.backTranslatedText = ""
         model.backTranslationMessage = ""
         model.isLoading = true
@@ -62,11 +75,16 @@ final class TranslationPanelController {
         showPanel()
     }
 
-    func showResult(source: String, translation: String, direction: TranslationDirection) {
+    func showResult(
+        source: String,
+        translation: String,
+        direction: TranslationDirection,
+        provider: TranslationProvider
+    ) {
         model.sourceText = source
         model.translatedText = translation
         model.directionLabel = direction.label
-        model.title = "Codex Translate"
+        model.title = "\(provider.label) Translate"
         model.message = ""
         model.backTranslatedText = ""
         model.backTranslationMessage = ""
@@ -178,6 +196,9 @@ final class TranslationPanelController {
                 effortChanged: { [weak self] effort in
                     self?.onReasoningEffortChanged?(effort)
                 },
+                providerChanged: { [weak self] provider in
+                    self?.onTranslationProviderChanged?(provider)
+                },
                 backTranslate: { [weak self] in
                     self?.onBackTranslateRequested?()
                 },
@@ -221,6 +242,7 @@ final class TranslationPanelController {
 private struct TranslationOverlayView: View {
     @ObservedObject var model: TranslationPanelModel
     let effortChanged: (ReasoningEffort) -> Void
+    let providerChanged: (TranslationProvider) -> Void
     let backTranslate: () -> Void
     let close: () -> Void
 
@@ -240,6 +262,9 @@ private struct TranslationOverlayView: View {
         .background(.regularMaterial)
         .onChange(of: model.reasoningEffort) { newEffort in
             effortChanged(newEffort)
+        }
+        .onChange(of: model.translationProvider) { newProvider in
+            providerChanged(newProvider)
         }
     }
 
@@ -263,7 +288,11 @@ private struct TranslationOverlayView: View {
 
             Spacer()
 
-            effortPicker
+            providerPicker
+
+            if model.translationProvider == .codex {
+                effortPicker
+            }
 
             if model.isLoading {
                 ProgressView()
@@ -277,6 +306,27 @@ private struct TranslationOverlayView: View {
             }
             .buttonStyle(.plain)
             .help("Close")
+        }
+    }
+
+    private var providerPicker: some View {
+        HStack(spacing: 6) {
+            Text("Engine")
+                .font(.system(size: 12, weight: .medium))
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+                .fixedSize(horizontal: true, vertical: false)
+
+            Picker("", selection: $model.translationProvider) {
+                ForEach(TranslationProvider.allCases) { provider in
+                    Text(provider.label).tag(provider)
+                }
+            }
+            .pickerStyle(.segmented)
+            .labelsHidden()
+            .frame(width: 132)
+            .disabled(model.isLoading || model.isBackTranslating)
+            .help("Translation engine")
         }
     }
 
@@ -296,7 +346,7 @@ private struct TranslationOverlayView: View {
             .pickerStyle(.segmented)
             .labelsHidden()
             .frame(width: 250)
-            .disabled(model.isLoading || model.isBackTranslating)
+            .disabled(model.isLoading || model.isBackTranslating || model.translationProvider != .codex)
             .help("Reasoning effort passed to codex exec")
         }
     }

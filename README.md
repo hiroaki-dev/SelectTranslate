@@ -1,12 +1,13 @@
 # CodexTranslator
 
-macOS utility app that translates selected text with `codex exec` and shows the source and translated text in a floating panel.
+macOS utility app that translates selected text with `codex exec` or local PLaMo MLX and shows the source and translated text in a floating panel.
 
 ## Requirements
 
 - macOS 13 or later
 - Xcode command line tools or Xcode
 - Codex CLI installed and logged in
+- Optional for local PLaMo: Apple Silicon Mac, Python 3, and MLX dependencies
 
 ## Build and Launch as a Mac App
 
@@ -31,13 +32,15 @@ The translation window is resizable.
 
 1. Select text in any app.
 2. Press `Control + F`.
-3. The app reads the selection through macOS Accessibility, translates with `codex exec`, then shows the original and translated text in a floating panel.
+3. The app reads the selection through macOS Accessibility, translates with the selected engine, then shows the original and translated text in a floating panel.
 
 Japanese text is translated to English. Text without Japanese characters is translated to Japanese.
 
 The app does not use `Command + C` or the clipboard to read selected text. It searches the focused element, the focused app, the element under the mouse, and other running apps for exposed selected text. Some apps do not expose selected text through Accessibility; in those apps CodexTranslator will show a no-selection error.
 
-Use the `Effort` segmented control in the panel to choose the Codex reasoning effort. When a translation is already displayed, changing the effort reruns that same source text. The app saves the selected value.
+Use the `Engine` segmented control in the panel to switch between `Codex` and `PLaMo`. When a translation is already displayed, changing the engine reruns that same source text. The app saves the selected value.
+
+Use the `Effort` segmented control in the panel to choose the Codex reasoning effort. It is shown only for the Codex engine. When a Codex translation is already displayed, changing the effort reruns that same source text. The app saves the selected value.
 
 Use the retranslation button in the `Translation` header to translate the current translation back to the original language. The back translation appears at the bottom of the `Translation` area.
 
@@ -75,3 +78,21 @@ The selected panel effort is passed as:
 ```
 
 The saved prompt template is rendered and sent to `codex exec` over stdin.
+
+## PLaMo command
+
+The PLaMo engine uses [`mlx-community/plamo-2-translate`](https://huggingface.co/mlx-community/plamo-2-translate), a 4-bit quantized PLaMo Translation Model for MLX on Apple Silicon. Review the model card and PLaMo community license before use.
+
+Install the local dependencies once:
+
+```sh
+./scripts/install-plamo-deps.sh
+```
+
+The first PLaMo translation downloads the model from Hugging Face. The app runs:
+
+```sh
+python3 -m mlx_lm generate --model mlx-community/plamo-2-translate --extra-eos-token '<|plamo:op|>' --prompt '<selected text>'
+```
+
+PLaMo is a translation-specialized model and is not instruction-tuned for chat, so the app sends the selected text directly instead of the editable Codex prompt template.

@@ -18,7 +18,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.regular)
         panelController.onReasoningEffortChanged = { [weak self] effort in
-            self?.startSourceRetranslation(effort: effort)
+            self?.startSourceRetranslation(effort: effort, provider: .codex)
+        }
+        panelController.onTranslationProviderChanged = { [weak self] provider in
+            guard let self else { return }
+            self.startSourceRetranslation(effort: self.panelController.reasoningEffort, provider: provider)
         }
         panelController.onBackTranslateRequested = { [weak self] in
             self?.startBackTranslation()
@@ -149,14 +153,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
-    private func startSourceRetranslation(effort: ReasoningEffort) {
+    private func startSourceRetranslation(effort: ReasoningEffort, provider: TranslationProvider) {
         guard let request = currentTranslationRequest else { return }
         guard translationTask == nil else { return }
 
         translationTask = Task { [weak self] in
             guard let self else { return }
             defer { self.translationTask = nil }
-            await self.translate(request: request, effort: effort)
+            await self.translate(request: request, effort: effort, provider: provider)
         }
     }
 
@@ -167,7 +171,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         translationTask = Task { [weak self] in
             guard let self else { return }
             defer { self.translationTask = nil }
-            await self.backTranslate(result: result, effort: self.panelController.reasoningEffort)
+            await self.backTranslate(
+                result: result,
+                effort: self.panelController.reasoningEffort,
+                provider: self.panelController.translationProvider
+            )
         }
     }
 
@@ -178,7 +186,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             let request = TranslationRequest(sourceText: sourceText, direction: direction)
             currentTranslationRequest = request
 
-            await translate(request: request, effort: panelController.reasoningEffort)
+            await translate(
+                request: request,
+                effort: panelController.reasoningEffort,
+                provider: panelController.translationProvider
+            )
         } catch SelectionReaderError.accessibilityPermissionRequired {
             currentTranslationRequest = nil
             currentTranslationResult = nil
@@ -214,14 +226,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         selectionReader.requestAccessibilityPermissionPromptIfNeeded()
     }
 
-    private func translate(request: TranslationRequest, effort: ReasoningEffort) async {
+    private func translate(request: TranslationRequest, effort: ReasoningEffort, provider: TranslationProvider) async {
         do {
             currentTranslationResult = nil
-            panelController.showLoading(source: request.sourceText, direction: request.direction)
+            panelController.showLoading(source: request.sourceText, direction: request.direction, provider: provider)
             let translatedText = try await translator.translate(
                 request.sourceText,
                 direction: request.direction,
-                effort: effort
+                effort: effort,
+                provider: provider
             )
             currentTranslationResult = TranslationResult(
                 sourceText: request.sourceText,
@@ -231,7 +244,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             panelController.showResult(
                 source: request.sourceText,
                 translation: translatedText,
-                direction: request.direction
+                direction: request.direction,
+                provider: provider
             )
         } catch {
             panelController.showError(
@@ -242,13 +256,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
-    private func backTranslate(result: TranslationResult, effort: ReasoningEffort) async {
+    private func backTranslate(result: TranslationResult, effort: ReasoningEffort, provider: TranslationProvider) async {
         do {
             panelController.showBackTranslationLoading()
             let backTranslatedText = try await translator.translate(
                 result.translatedText,
                 direction: result.direction.reversed,
-                effort: effort
+                effort: effort,
+                provider: provider
             )
             panelController.showBackTranslationResult(backTranslatedText)
         } catch {

@@ -45,20 +45,23 @@ enum TranslationDirection {
     }
 }
 
-enum CodexTranslationError: LocalizedError {
-    case codexCommandFailed(status: Int32, output: String)
-    case emptyResponse
+enum TranslationServiceError: LocalizedError {
+    case commandFailed(provider: TranslationProvider, commandName: String, status: Int32, output: String)
+    case emptyResponse(provider: TranslationProvider)
 
     var errorDescription: String? {
         switch self {
-        case let .codexCommandFailed(status, output):
+        case let .commandFailed(provider, commandName, status, output):
             let detail = Self.conciseError(from: output)
+            let installHint = provider == .plamo
+                ? " Install PLaMo support with: python3 -m pip install mlx-lm numba"
+                : ""
             if detail.isEmpty {
-                return "codex exec exited with status \(status)."
+                return "\(commandName) exited with status \(status).\(installHint)"
             }
-            return "codex exec exited with status \(status): \(detail)"
-        case .emptyResponse:
-            return "codex exec returned an empty translation."
+            return "\(commandName) exited with status \(status): \(detail)\(installHint)"
+        case let .emptyResponse(provider):
+            return "\(provider.description) returned an empty translation."
         }
     }
 
@@ -86,7 +89,25 @@ final class CodexTranslationService {
         self.workspaceURL = workspaceURL
     }
 
-    func translate(_ text: String, direction: TranslationDirection, effort: ReasoningEffort) async throws -> String {
+    func translate(
+        _ text: String,
+        direction: TranslationDirection,
+        effort: ReasoningEffort,
+        provider: TranslationProvider
+    ) async throws -> String {
+        switch provider {
+        case .codex:
+            return try await translateWithCodex(text, direction: direction, effort: effort)
+        case .plamo:
+            return try await translateWithPlamo(text)
+        }
+    }
+
+    private func translateWithCodex(
+        _ text: String,
+        direction: TranslationDirection,
+        effort: ReasoningEffort
+    ) async throws -> String {
         let promptTemplate = PromptSettings.template
         return try await Task.detached(priority: .userInitiated) { [workspaceURL, effort, promptTemplate] in
             try FileManager.default.createDirectory(at: workspaceURL, withIntermediateDirectories: true)
@@ -141,7 +162,9 @@ final class CodexTranslationService {
                 .joined(separator: "\n")
 
             if process.terminationStatus != 0 {
-                throw CodexTranslationError.codexCommandFailed(
+                throw TranslationServiceError.commandFailed(
+                    provider: .codex,
+                    commandName: "codex exec",
                     status: process.terminationStatus,
                     output: combinedOutput
                 )
@@ -152,15 +175,149 @@ final class CodexTranslationService {
                 .trimmingCharacters(in: .whitespacesAndNewlines)
 
             if translated.localizedCaseInsensitiveContains("ERROR:") {
-                throw CodexTranslationError.codexCommandFailed(status: process.terminationStatus, output: translated)
+                throw TranslationServiceError.commandFailed(
+                    provider: .codex,
+                    commandName: "codex exec",
+                    status: process.terminationStatus,
+                    output: translated
+                )
             }
 
             guard !translated.isEmpty else {
-                throw CodexTranslationError.emptyResponse
+                throw TranslationServiceError.emptyResponse(provider: .codex)
             }
 
             return translated
         }.value
+    }
+
+    private func translateWithPlamo(_ text: String) async throws -> String {
+        try await Task.detached(priority: .userInitiated) { [workspaceURL] in
+            try FileManager.default.createDirectory(at: workspaceURL, withIntermediateDirectories: true)
+
+            let process = Process()
+            process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
+            process.currentDirectoryURL = workspaceURL
+            process.arguments = [
+                "python3",
+                "-m",
+                "mlx_lm",
+                "generate",
+                "--model",
+                "mlx-community/plamo-2-translate",
+                "--extra-eos-token",
+                "<|plamo:op|>",
+                "--prompt",
+                text
+            ]
+            process.environment = Self.processEnvironment(workspacePath: workspaceURL.path)
+
+            let stdout = Pipe()
+            let stderr = Pipe()
+            process.standardOutput = stdout
+            process.standardError = stderr
+
+            try process.run()
+
+            let stdoutData = stdout.fileHandleForReading.readDataToEndOfFile()
+            let stderrData = stderr.fileHandleForReading.readDataToEndOfFile()
+            process.waitUntilExit()
+
+            let stdoutText = String(data: stdoutData, encoding: .utf8) ?? ""
+            let stderrText = String(data: stderrData, encoding: .utf8) ?? ""
+            let combinedOutput = [stderrText, stdoutText]
+                .filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+                .joined(separator: "\n")
+
+            if process.terminationStatus != 0 {
+                throw TranslationServiceError.commandFailed(
+                    provider: .plamo,
+                    commandName: "python3 -m mlx_lm generate",
+                    status: process.terminationStatus,
+                    output: combinedOutput
+                )
+            }
+
+            let translated = Self.parsePlamoOutput(stdoutText, sourceText: text)
+            if translated.localizedCaseInsensitiveContains("ERROR:") {
+                throw TranslationServiceError.commandFailed(
+                    provider: .plamo,
+                    commandName: "python3 -m mlx_lm generate",
+                    status: process.terminationStatus,
+                    output: translated
+                )
+            }
+
+            guard !translated.isEmpty else {
+                throw TranslationServiceError.emptyResponse(provider: .plamo)
+            }
+
+            return translated
+        }.value
+    }
+
+    private static func parsePlamoOutput(_ output: String, sourceText: String) -> String {
+        let trimmed = output.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return "" }
+
+        let lines = trimmed.components(separatedBy: .newlines)
+        var sawOpeningSeparator = false
+        var captured: [String] = []
+
+        for line in lines {
+            let lineTrimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
+            if isPlamoSeparator(lineTrimmed) {
+                if sawOpeningSeparator {
+                    break
+                }
+                sawOpeningSeparator = true
+                continue
+            }
+
+            if sawOpeningSeparator {
+                captured.append(line)
+            }
+        }
+
+        let separatedOutput = removeSourceEcho(cleanPlamoContentLines(captured), sourceText: sourceText)
+        if !separatedOutput.isEmpty {
+            return separatedOutput
+        }
+
+        return removeSourceEcho(cleanPlamoContentLines(lines), sourceText: sourceText)
+    }
+
+    private static func cleanPlamoContentLines(_ lines: [String]) -> String {
+        lines
+            .filter { line in
+                let trimmedLine = line.trimmingCharacters(in: .whitespacesAndNewlines)
+                return !trimmedLine.isEmpty
+                    && !isPlamoSeparator(trimmedLine)
+                    && !isPlamoStatsLine(trimmedLine)
+            }
+            .joined(separator: "\n")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private static func removeSourceEcho(_ output: String, sourceText: String) -> String {
+        let trimmedOutput = output.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmedSource = sourceText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedSource.isEmpty, trimmedOutput.hasPrefix(trimmedSource) else {
+            return trimmedOutput
+        }
+
+        return String(trimmedOutput.dropFirst(trimmedSource.count))
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private static func isPlamoSeparator(_ line: String) -> Bool {
+        line.count >= 3 && line.allSatisfy { $0 == "=" }
+    }
+
+    private static func isPlamoStatsLine(_ line: String) -> Bool {
+        line.hasPrefix("Prompt:")
+            || line.hasPrefix("Generation:")
+            || line.hasPrefix("Peak memory:")
     }
 
     private static func defaultWorkspaceURL() -> URL {

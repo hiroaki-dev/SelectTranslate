@@ -13,7 +13,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var translationTask: Task<Void, Never>?
     private var currentTranslationRequest: TranslationRequest?
     private var currentTranslationResult: TranslationResult?
-    private var didAutoRequestAccessibilityPermission = false
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.regular)
@@ -227,11 +226,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func requestAccessibilityPermissionFromShortcutIfNeeded() {
-        guard !selectionReader.isAccessibilityTrusted, !didAutoRequestAccessibilityPermission else {
+        guard !selectionReader.isAccessibilityTrusted else {
             return
         }
 
-        didAutoRequestAccessibilityPermission = true
         selectionReader.requestAccessibilityPermissionPromptIfNeeded()
     }
 

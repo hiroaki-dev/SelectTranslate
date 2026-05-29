@@ -21,8 +21,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             self?.startSourceRetranslation(effort: effort, provider: .codex)
         }
         panelController.onTranslationProviderChanged = { [weak self] provider in
-            guard let self else { return }
-            self.startSourceRetranslation(effort: self.panelController.reasoningEffort, provider: provider)
+            self?.startProviderChange(provider)
         }
         panelController.onBackTranslateRequested = { [weak self] in
             self?.startBackTranslation()
@@ -164,6 +163,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
+    private func startProviderChange(_ provider: TranslationProvider) {
+        guard translationTask == nil else { return }
+
+        translationTask = Task { [weak self] in
+            guard let self else { return }
+            defer { self.translationTask = nil }
+            await self.applyProviderChange(provider)
+        }
+    }
+
     private func startBackTranslation() {
         guard let result = currentTranslationResult else { return }
         guard translationTask == nil else { return }
@@ -229,6 +238,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func translate(request: TranslationRequest, effort: ReasoningEffort, provider: TranslationProvider) async {
         do {
             currentTranslationResult = nil
+            if provider == .plamo {
+                try await preparePlamoIfNeeded()
+            }
             panelController.showLoading(source: request.sourceText, direction: request.direction, provider: provider)
             let translatedText = try await translator.translate(
                 request.sourceText,
@@ -258,6 +270,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func backTranslate(result: TranslationResult, effort: ReasoningEffort, provider: TranslationProvider) async {
         do {
+            if provider == .plamo {
+                try await preparePlamoIfNeeded()
+            }
             panelController.showBackTranslationLoading()
             let backTranslatedText = try await translator.translate(
                 result.translatedText,
@@ -268,6 +283,41 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             panelController.showBackTranslationResult(backTranslatedText)
         } catch {
             panelController.showBackTranslationError(error.localizedDescription)
+        }
+    }
+
+    private func applyProviderChange(_ provider: TranslationProvider) async {
+        if provider == .plamo {
+            do {
+                try await preparePlamoIfNeeded()
+            } catch {
+                TranslationPreferences.translationProvider = .codex
+                panelController.setTranslationProvider(.codex)
+                panelController.showError(
+                    source: currentTranslationRequest?.sourceText,
+                    title: "PLaMo Setup Failed",
+                    message: error.localizedDescription
+                )
+                return
+            }
+        }
+
+        guard let request = currentTranslationRequest else { return }
+        await translate(request: request, effort: panelController.reasoningEffort, provider: provider)
+    }
+
+    private func preparePlamoIfNeeded() async throws {
+        guard !PlamoSetupService.isSetupComplete else { return }
+
+        panelController.showPreparationLoading(
+            title: "Preparing PLaMo",
+            message: "Installing dependencies and downloading the model."
+        )
+
+        try await PlamoSetupService.prepare { [weak self] message in
+            Task { @MainActor in
+                self?.panelController.showPreparationLoading(title: "Preparing PLaMo", message: message)
+            }
         }
     }
 }

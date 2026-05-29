@@ -48,13 +48,14 @@ enum TranslationDirection {
 enum TranslationServiceError: LocalizedError {
     case commandFailed(provider: TranslationProvider, commandName: String, status: Int32, output: String)
     case emptyResponse(provider: TranslationProvider)
+    case providerNotReady(provider: TranslationProvider, message: String)
 
     var errorDescription: String? {
         switch self {
         case let .commandFailed(provider, commandName, status, output):
             let detail = Self.conciseError(from: output)
             let installHint = provider == .plamo
-                ? " Install PLaMo support with: python3 -m pip install mlx-lm numba"
+                ? " Open Settings and select PLaMo to prepare the local model."
                 : ""
             if detail.isEmpty {
                 return "\(commandName) exited with status \(status).\(installHint)"
@@ -62,6 +63,8 @@ enum TranslationServiceError: LocalizedError {
             return "\(commandName) exited with status \(status): \(detail)\(installHint)"
         case let .emptyResponse(provider):
             return "\(provider.description) returned an empty translation."
+        case let .providerNotReady(provider, message):
+            return "\(provider.description) is not ready: \(message)"
         }
     }
 
@@ -136,7 +139,7 @@ final class CodexTranslationService {
                 outputURL.path,
                 "-"
             ]
-            process.environment = Self.processEnvironment(workspacePath: workspaceURL.path)
+            process.environment = Self.processEnvironment(workingDirectory: workspaceURL.path)
 
             let input = Pipe()
             let stdout = Pipe()
@@ -193,24 +196,30 @@ final class CodexTranslationService {
 
     private func translateWithPlamo(_ text: String) async throws -> String {
         try await Task.detached(priority: .userInitiated) { [workspaceURL] in
+            guard PlamoSetupService.isSetupComplete else {
+                throw TranslationServiceError.providerNotReady(
+                    provider: .plamo,
+                    message: "Open Settings and select PLaMo to install dependencies and download the model."
+                )
+            }
+
             try FileManager.default.createDirectory(at: workspaceURL, withIntermediateDirectories: true)
 
             let process = Process()
-            process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
+            process.executableURL = AppPaths.plamoPythonURL
             process.currentDirectoryURL = workspaceURL
             process.arguments = [
-                "python3",
                 "-m",
                 "mlx_lm",
                 "generate",
                 "--model",
-                "mlx-community/plamo-2-translate",
+                PlamoSetupService.modelID,
                 "--extra-eos-token",
-                "<|plamo:op|>",
+                PlamoSetupService.extraEOSToken,
                 "--prompt",
                 text
             ]
-            process.environment = Self.processEnvironment(workspacePath: workspaceURL.path)
+            process.environment = Self.processEnvironment(workingDirectory: workspaceURL.path)
 
             let stdout = Pipe()
             let stderr = Pipe()
@@ -321,25 +330,10 @@ final class CodexTranslationService {
     }
 
     private static func defaultWorkspaceURL() -> URL {
-        let baseURL = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
-            ?? FileManager.default.temporaryDirectory
-        let workspaceURL = baseURL
-            .appendingPathComponent("CodexTranslator", isDirectory: true)
-            .appendingPathComponent("CodexWorkspace", isDirectory: true)
-
-        try? FileManager.default.createDirectory(at: workspaceURL, withIntermediateDirectories: true)
-        return workspaceURL
+        AppPaths.codexWorkspaceURL
     }
 
-    private static func processEnvironment(workspacePath: String) -> [String: String] {
-        var environment = ProcessInfo.processInfo.environment
-        let fallbackPath = "/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
-        if let existingPath = environment["PATH"], !existingPath.isEmpty {
-            environment["PATH"] = "\(existingPath):\(fallbackPath)"
-        } else {
-            environment["PATH"] = fallbackPath
-        }
-        environment["PWD"] = workspacePath
-        return environment
+    private static func processEnvironment(workingDirectory: String) -> [String: String] {
+        AppPaths.processEnvironment(workingDirectory: workingDirectory)
     }
 }

@@ -4,7 +4,7 @@ import SwiftUI
 @MainActor
 final class TranslationPanelModel: ObservableObject {
     private static let effortDefaultsKey = "reasoningEffort"
-    private static let providerDefaultsKey = "translationProvider"
+    private var providerObserver: NSObjectProtocol?
 
     @Published var sourceText: String = ""
     @Published var translatedText: String = ""
@@ -25,15 +25,33 @@ final class TranslationPanelModel: ObservableObject {
     }
     @Published var translationProvider: TranslationProvider {
         didSet {
-            UserDefaults.standard.set(translationProvider.rawValue, forKey: Self.providerDefaultsKey)
+            if oldValue != translationProvider {
+                TranslationPreferences.translationProvider = translationProvider
+            }
         }
     }
 
     init() {
         let savedValue = UserDefaults.standard.string(forKey: Self.effortDefaultsKey)
         reasoningEffort = savedValue.flatMap(ReasoningEffort.init(rawValue:)) ?? .low
-        let savedProvider = UserDefaults.standard.string(forKey: Self.providerDefaultsKey)
-        translationProvider = savedProvider.flatMap(TranslationProvider.init(rawValue:)) ?? .codex
+        translationProvider = TranslationPreferences.translationProvider
+        providerObserver = NotificationCenter.default.addObserver(
+            forName: .translationProviderDidChange,
+            object: nil,
+            queue: .main
+        ) { [weak self] notification in
+            guard let provider = notification.object as? TranslationProvider else { return }
+            Task { @MainActor in
+                guard self?.translationProvider != provider else { return }
+                self?.translationProvider = provider
+            }
+        }
+    }
+
+    deinit {
+        if let providerObserver {
+            NotificationCenter.default.removeObserver(providerObserver)
+        }
     }
 }
 
@@ -53,6 +71,10 @@ final class TranslationPanelController {
 
     var translationProvider: TranslationProvider {
         model.translationProvider
+    }
+
+    func setTranslationProvider(_ provider: TranslationProvider) {
+        model.translationProvider = provider
     }
 
     func activateOnNextShow() {
@@ -108,6 +130,21 @@ final class TranslationPanelController {
         model.isBackTranslating = false
         model.isBackTranslationError = false
         model.isError = true
+        model.canBackTranslate = false
+        showPanel()
+    }
+
+    func showPreparationLoading(title: String, message: String) {
+        model.translatedText = ""
+        model.directionLabel = ""
+        model.title = title
+        model.message = message
+        model.backTranslatedText = ""
+        model.backTranslationMessage = ""
+        model.isLoading = true
+        model.isBackTranslating = false
+        model.isBackTranslationError = false
+        model.isError = false
         model.canBackTranslate = false
         showPanel()
     }

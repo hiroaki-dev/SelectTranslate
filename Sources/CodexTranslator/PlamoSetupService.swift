@@ -41,15 +41,19 @@ enum PlamoSetupService {
             try run(
                 executable: URL(fileURLWithPath: "/usr/bin/env"),
                 arguments: ["python3", "-m", "venv", AppPaths.plamoEnvironmentURL.path],
-                commandName: "python3 -m venv"
+                commandName: "python3 -m venv",
+                progress: progress
             )
+        } else {
+            progress("Using existing local Python environment.")
         }
 
         progress("Installing MLX dependencies.")
         try run(
             executable: AppPaths.plamoPythonURL,
             arguments: ["-m", "pip", "install", "-U", "mlx-lm", "numba"],
-            commandName: "python3 -m pip install"
+            commandName: "python3 -m pip install",
+            progress: progress
         )
 
         progress("Downloading PLaMo model.")
@@ -66,44 +70,77 @@ enum PlamoSetupService {
                 "--prompt",
                 "こんにちは"
             ],
-            commandName: "python3 -m mlx_lm generate"
+            commandName: "python3 -m mlx_lm generate",
+            progress: progress
         )
 
         try "ready\n".write(to: setupMarkerURL, atomically: true, encoding: .utf8)
         progress("PLaMo is ready.")
     }
 
-    private static func run(executable: URL, arguments: [String], commandName: String) throws {
-        let outputURL = FileManager.default.temporaryDirectory
-            .appendingPathComponent("CodexTranslator-PLaMoSetup-\(UUID().uuidString).log")
-        FileManager.default.createFile(atPath: outputURL.path, contents: nil)
-
-        let outputHandle = try FileHandle(forWritingTo: outputURL)
-        defer {
-            try? outputHandle.close()
-            try? FileManager.default.removeItem(at: outputURL)
-        }
-
+    private static func run(
+        executable: URL,
+        arguments: [String],
+        commandName: String,
+        progress: @escaping @Sendable (String) -> Void
+    ) throws {
         let process = Process()
         process.executableURL = executable
         process.arguments = arguments
         process.currentDirectoryURL = AppPaths.applicationSupportURL
         process.environment = AppPaths.processEnvironment(workingDirectory: AppPaths.applicationSupportURL.path)
-        process.standardOutput = outputHandle
-        process.standardError = outputHandle
 
+        let outputPipe = Pipe()
+        process.standardOutput = outputPipe
+        process.standardError = outputPipe
+
+        progress("$ \(commandName)")
         try process.run()
+
+        var combinedOutput = ""
+        while true {
+            let data = outputPipe.fileHandleForReading.availableData
+            if data.isEmpty {
+                break
+            }
+
+            let chunk = String(data: data, encoding: .utf8) ?? ""
+            combinedOutput += chunk
+            for line in progressLines(from: chunk) {
+                progress(line)
+            }
+        }
+
         process.waitUntilExit()
-        try? outputHandle.synchronize()
 
         guard process.terminationStatus == 0 else {
-            let output = (try? String(contentsOf: outputURL, encoding: .utf8)) ?? ""
             throw PlamoSetupError.commandFailed(
                 command: commandName,
                 status: process.terminationStatus,
-                output: output
+                output: combinedOutput
             )
         }
+    }
+
+    private static func progressLines(from chunk: String) -> [String] {
+        chunk
+            .replacingOccurrences(of: "\r", with: "\n")
+            .components(separatedBy: .newlines)
+            .map(cleanProgressLine)
+            .filter { !$0.isEmpty }
+    }
+
+    private static func cleanProgressLine(_ line: String) -> String {
+        let withoutANSI = line.replacingOccurrences(
+            of: "\u{001B}\\[[0-9;?]*[ -/]*[@-~]",
+            with: "",
+            options: .regularExpression
+        )
+        let trimmed = withoutANSI.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard trimmed.count > 260 else {
+            return trimmed
+        }
+        return "\(trimmed.prefix(257))..."
     }
 }
 

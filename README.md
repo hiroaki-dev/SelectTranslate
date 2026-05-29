@@ -83,7 +83,7 @@ The saved prompt template is rendered and sent to `codex exec` over stdin.
 
 The PLaMo engine uses [`mlx-community/plamo-2-translate`](https://huggingface.co/mlx-community/plamo-2-translate), a 4-bit quantized PLaMo Translation Model for MLX on Apple Silicon. Review the model card and PLaMo community license before use.
 
-The first time you select `PLaMo` from Settings or the translation panel, CodexTranslator creates an app-local Python environment, installs `mlx-lm` and `numba`, and downloads the model. The files are stored under:
+The first time you select `PLaMo` from Settings or the translation panel, CodexTranslator creates an app-local Python environment, installs `mlx-lm` and `numba`, and downloads the model. Settings shows the active setup step and live command output, including download progress reported by the underlying tools. The files are stored under:
 
 ```sh
 ~/Library/Application Support/CodexTranslator/

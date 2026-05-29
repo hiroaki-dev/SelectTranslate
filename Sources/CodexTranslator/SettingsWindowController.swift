@@ -51,7 +51,9 @@ private final class SettingsModel: ObservableObject {
     @Published var translationProvider: TranslationProvider
     @Published var isPreparingPlamo: Bool = false
     @Published var plamoStatusMessage: String
+    @Published var plamoStatusLog: String = ""
     @Published var isPlamoStatusError: Bool = false
+    private var plamoLogLines: [String] = []
 
     init() {
         promptTemplate = PromptSettings.template
@@ -104,21 +106,23 @@ private final class SettingsModel: ObservableObject {
 
         isPreparingPlamo = true
         isPlamoStatusError = false
-        plamoStatusMessage = "Preparing PLaMo."
+        plamoLogLines = []
+        plamoStatusLog = ""
+        appendPlamoProgress("Preparing PLaMo.")
 
         Task { [weak self] in
             guard let self else { return }
             do {
                 try await PlamoSetupService.prepare { message in
                     Task { @MainActor [weak self] in
-                        self?.plamoStatusMessage = message
+                        self?.appendPlamoProgress(message)
                     }
                 }
 
                 await MainActor.run {
                     self.isPreparingPlamo = false
                     self.isPlamoStatusError = false
-                    self.plamoStatusMessage = "PLaMo is ready."
+                    self.appendPlamoProgress("PLaMo is ready.")
                     TranslationPreferences.translationProvider = .plamo
                     self.translationProvider = .plamo
                 }
@@ -126,11 +130,32 @@ private final class SettingsModel: ObservableObject {
                 await MainActor.run {
                     self.isPreparingPlamo = false
                     self.isPlamoStatusError = true
-                    self.plamoStatusMessage = error.localizedDescription
+                    self.appendPlamoProgress("ERROR: \(error.localizedDescription)")
                     self.translationProvider = TranslationPreferences.translationProvider
                 }
             }
         }
+    }
+
+    private func appendPlamoProgress(_ message: String) {
+        let cleanLines = message
+            .components(separatedBy: .newlines)
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+
+        guard !cleanLines.isEmpty else { return }
+        plamoStatusMessage = cleanLines.last ?? message
+
+        for line in cleanLines {
+            if plamoLogLines.last != line {
+                plamoLogLines.append(line)
+            }
+        }
+
+        if plamoLogLines.count > 80 {
+            plamoLogLines.removeFirst(plamoLogLines.count - 80)
+        }
+        plamoStatusLog = plamoLogLines.joined(separator: "\n")
     }
 }
 
@@ -218,6 +243,26 @@ private struct SettingsView: View {
                 .font(.system(size: 12))
                 .foregroundStyle(model.isPlamoStatusError ? .red : .secondary)
                 .fixedSize(horizontal: false, vertical: true)
+
+            if !model.plamoStatusLog.isEmpty {
+                ScrollView {
+                    Text(model.plamoStatusLog)
+                        .font(.system(size: 11, design: .monospaced))
+                        .foregroundStyle(.secondary)
+                        .textSelection(.enabled)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(8)
+                }
+                .frame(height: 120)
+                .background(
+                    RoundedRectangle(cornerRadius: 8)
+                        .fill(Color(nsColor: .textBackgroundColor).opacity(0.82))
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 8)
+                        .stroke(Color(nsColor: .separatorColor), lineWidth: 1)
+                )
+            }
         }
     }
 }

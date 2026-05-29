@@ -309,14 +309,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func preparePlamoIfNeeded() async throws {
         guard !PlamoSetupService.isSetupComplete else { return }
 
+        let progressLog = SetupProgressLog()
+        let initialLog = await progressLog.append("Installing dependencies and downloading the model.")
         panelController.showPreparationLoading(
             title: "Preparing PLaMo",
-            message: "Installing dependencies and downloading the model."
+            message: initialLog
         )
 
-        try await PlamoSetupService.prepare { [weak self] message in
-            Task { @MainActor in
-                self?.panelController.showPreparationLoading(title: "Preparing PLaMo", message: message)
+        try await PlamoSetupService.prepare { [weak self, progressLog] message in
+            Task { @MainActor [weak self] in
+                let displayText = await progressLog.append(message)
+                self?.panelController.showPreparationLoading(title: "Preparing PLaMo", message: displayText)
             }
         }
     }
@@ -331,4 +334,25 @@ private struct TranslationResult {
     let sourceText: String
     let direction: TranslationDirection
     let translatedText: String
+}
+
+private actor SetupProgressLog {
+    private var lines: [String] = []
+
+    func append(_ message: String) -> String {
+        let cleanLines = message
+            .components(separatedBy: .newlines)
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+
+        for line in cleanLines where lines.last != line {
+            lines.append(line)
+        }
+
+        if lines.count > 80 {
+            lines.removeFirst(lines.count - 80)
+        }
+
+        return lines.joined(separator: "\n")
+    }
 }

@@ -55,7 +55,7 @@ enum TranslationServiceError: LocalizedError {
         case let .commandFailed(provider, commandName, status, output):
             let detail = Self.conciseError(from: output)
             let installHint = provider == .plamo
-                ? " Open Settings and select PLaMo to prepare the local model."
+                ? " Run Prepare PLaMo in Settings before selecting the local model."
                 : ""
             if detail.isEmpty {
                 return "\(commandName) exited with status \(status).\(installHint)"
@@ -199,7 +199,7 @@ final class CodexTranslationService {
             guard PlamoSetupService.isSetupComplete else {
                 throw TranslationServiceError.providerNotReady(
                     provider: .plamo,
-                    message: "Open Settings and select PLaMo to install dependencies and download the model."
+                    message: "Run Prepare PLaMo in Settings before selecting it."
                 )
             }
 

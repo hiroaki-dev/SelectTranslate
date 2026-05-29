@@ -5,6 +5,7 @@ import SwiftUI
 final class TranslationPanelModel: ObservableObject {
     private static let effortDefaultsKey = "reasoningEffort"
     private var providerObserver: NSObjectProtocol?
+    private var plamoSetupObserver: NSObjectProtocol?
 
     @Published var sourceText: String = ""
     @Published var translatedText: String = ""
@@ -18,6 +19,7 @@ final class TranslationPanelModel: ObservableObject {
     @Published var isBackTranslationError: Bool = false
     @Published var isError: Bool = false
     @Published var canBackTranslate: Bool = false
+    @Published var isPlamoReady: Bool
     @Published var reasoningEffort: ReasoningEffort {
         didSet {
             UserDefaults.standard.set(reasoningEffort.rawValue, forKey: Self.effortDefaultsKey)
@@ -34,6 +36,7 @@ final class TranslationPanelModel: ObservableObject {
     init() {
         let savedValue = UserDefaults.standard.string(forKey: Self.effortDefaultsKey)
         reasoningEffort = savedValue.flatMap(ReasoningEffort.init(rawValue:)) ?? .low
+        isPlamoReady = PlamoSetupService.isSetupComplete
         translationProvider = TranslationPreferences.translationProvider
         providerObserver = NotificationCenter.default.addObserver(
             forName: .translationProviderDidChange,
@@ -46,11 +49,39 @@ final class TranslationPanelModel: ObservableObject {
                 self?.translationProvider = provider
             }
         }
+        plamoSetupObserver = NotificationCenter.default.addObserver(
+            forName: .plamoSetupStatusDidChange,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor in
+                self?.refreshPlamoReadiness()
+            }
+        }
     }
 
     deinit {
         if let providerObserver {
             NotificationCenter.default.removeObserver(providerObserver)
+        }
+        if let plamoSetupObserver {
+            NotificationCenter.default.removeObserver(plamoSetupObserver)
+        }
+    }
+
+    func setProviderFromUserSelection(_ provider: TranslationProvider) {
+        guard provider != .plamo || isPlamoReady else {
+            message = "Prepare PLaMo in Settings before selecting it."
+            return
+        }
+
+        translationProvider = provider
+    }
+
+    private func refreshPlamoReadiness() {
+        isPlamoReady = PlamoSetupService.isSetupComplete
+        if !isPlamoReady, translationProvider == .plamo {
+            translationProvider = .codex
         }
     }
 }
@@ -354,16 +385,21 @@ private struct TranslationOverlayView: View {
                 .lineLimit(1)
                 .fixedSize(horizontal: true, vertical: false)
 
-            Picker("", selection: $model.translationProvider) {
+            Picker("", selection: Binding(
+                get: { model.translationProvider },
+                set: { model.setProviderFromUserSelection($0) }
+            )) {
                 ForEach(TranslationProvider.allCases) { provider in
-                    Text(provider.label).tag(provider)
+                    Text(provider.label)
+                        .tag(provider)
+                        .disabled(provider == .plamo && !model.isPlamoReady)
                 }
             }
             .pickerStyle(.segmented)
             .labelsHidden()
             .frame(width: 132)
             .disabled(model.isLoading || model.isBackTranslating)
-            .help("Translation engine")
+            .help(model.isPlamoReady ? "Translation engine" : "Prepare PLaMo in Settings before selecting it")
         }
     }
 

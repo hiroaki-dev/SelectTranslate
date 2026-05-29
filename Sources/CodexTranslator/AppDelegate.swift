@@ -236,9 +236,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func translate(request: TranslationRequest, effort: ReasoningEffort, provider: TranslationProvider) async {
         do {
             currentTranslationResult = nil
-            if provider == .plamo {
-                try await preparePlamoIfNeeded()
-            }
             panelController.showLoading(source: request.sourceText, direction: request.direction, provider: provider)
             let translatedText = try await translator.translate(
                 request.sourceText,
@@ -268,9 +265,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func backTranslate(result: TranslationResult, effort: ReasoningEffort, provider: TranslationProvider) async {
         do {
-            if provider == .plamo {
-                try await preparePlamoIfNeeded()
-            }
             panelController.showBackTranslationLoading()
             let backTranslatedText = try await translator.translate(
                 result.translatedText,
@@ -285,41 +279,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func applyProviderChange(_ provider: TranslationProvider) async {
-        if provider == .plamo {
-            do {
-                try await preparePlamoIfNeeded()
-            } catch {
-                TranslationPreferences.translationProvider = .codex
-                panelController.setTranslationProvider(.codex)
-                panelController.showError(
-                    source: currentTranslationRequest?.sourceText,
-                    title: "PLaMo Setup Failed",
-                    message: error.localizedDescription
-                )
-                return
-            }
+        if provider == .plamo, !PlamoSetupService.isSetupComplete {
+            TranslationPreferences.translationProvider = .codex
+            panelController.setTranslationProvider(.codex)
+            panelController.showError(
+                source: currentTranslationRequest?.sourceText,
+                title: "PLaMo Not Ready",
+                message: "Prepare PLaMo in Settings before selecting it."
+            )
+            return
         }
 
         guard let request = currentTranslationRequest else { return }
         await translate(request: request, effort: panelController.reasoningEffort, provider: provider)
-    }
-
-    private func preparePlamoIfNeeded() async throws {
-        guard !PlamoSetupService.isSetupComplete else { return }
-
-        let progressLog = SetupProgressLog()
-        let initialLog = await progressLog.append("Installing dependencies and downloading the model.")
-        panelController.showPreparationLoading(
-            title: "Preparing PLaMo",
-            message: initialLog
-        )
-
-        try await PlamoSetupService.prepare { [weak self, progressLog] message in
-            Task { @MainActor [weak self] in
-                let displayText = await progressLog.append(message)
-                self?.panelController.showPreparationLoading(title: "Preparing PLaMo", message: displayText)
-            }
-        }
     }
 }
 
@@ -332,25 +304,4 @@ private struct TranslationResult {
     let sourceText: String
     let direction: TranslationDirection
     let translatedText: String
-}
-
-private actor SetupProgressLog {
-    private var lines: [String] = []
-
-    func append(_ message: String) -> String {
-        let cleanLines = message
-            .components(separatedBy: .newlines)
-            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
-            .filter { !$0.isEmpty }
-
-        for line in cleanLines where lines.last != line {
-            lines.append(line)
-        }
-
-        if lines.count > 80 {
-            lines.removeFirst(lines.count - 80)
-        }
-
-        return lines.joined(separator: "\n")
-    }
 }

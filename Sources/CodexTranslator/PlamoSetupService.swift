@@ -1,5 +1,9 @@
 import Foundation
 
+extension Notification.Name {
+    static let plamoSetupStatusDidChange = Notification.Name("CodexTranslatorPlamoSetupStatusDidChange")
+}
+
 enum PlamoSetupError: LocalizedError {
     case commandFailed(command: String, status: Int32, output: String)
 
@@ -75,6 +79,7 @@ enum PlamoSetupService {
         )
 
         try "ready\n".write(to: setupMarkerURL, atomically: true, encoding: .utf8)
+        NotificationCenter.default.post(name: .plamoSetupStatusDidChange, object: nil)
         progress("PLaMo is ready.")
     }
 

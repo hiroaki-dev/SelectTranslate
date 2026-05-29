@@ -42,6 +42,7 @@ final class SettingsWindowController {
 @MainActor
 private final class SettingsModel: ObservableObject {
     private var providerObserver: NSObjectProtocol?
+    private var plamoSetupObserver: NSObjectProtocol?
 
     @Published var promptTemplate: String {
         didSet {
@@ -49,6 +50,7 @@ private final class SettingsModel: ObservableObject {
         }
     }
     @Published var translationProvider: TranslationProvider
+    @Published var isPlamoReady: Bool
     @Published var isPreparingPlamo: Bool = false
     @Published var plamoStatusMessage: String
     @Published var plamoStatusLog: String = ""
@@ -57,10 +59,12 @@ private final class SettingsModel: ObservableObject {
 
     init() {
         promptTemplate = PromptSettings.template
+        let plamoReady = PlamoSetupService.isSetupComplete
+        isPlamoReady = plamoReady
         translationProvider = TranslationPreferences.translationProvider
-        plamoStatusMessage = PlamoSetupService.isSetupComplete
+        plamoStatusMessage = plamoReady
             ? "PLaMo is ready."
-            : "PLaMo dependencies and model will be installed the first time you select PLaMo."
+            : "Prepare PLaMo before selecting it."
         providerObserver = NotificationCenter.default.addObserver(
             forName: .translationProviderDidChange,
             object: nil,
@@ -72,11 +76,23 @@ private final class SettingsModel: ObservableObject {
                 self?.translationProvider = provider
             }
         }
+        plamoSetupObserver = NotificationCenter.default.addObserver(
+            forName: .plamoSetupStatusDidChange,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor in
+                self?.refreshPlamoReadiness()
+            }
+        }
     }
 
     deinit {
         if let providerObserver {
             NotificationCenter.default.removeObserver(providerObserver)
+        }
+        if let plamoSetupObserver {
+            NotificationCenter.default.removeObserver(plamoSetupObserver)
         }
     }
 
@@ -93,15 +109,24 @@ private final class SettingsModel: ObservableObject {
             TranslationPreferences.translationProvider = .codex
             translationProvider = .codex
             isPlamoStatusError = false
-            plamoStatusMessage = PlamoSetupService.isSetupComplete
+            plamoStatusMessage = isPlamoReady
                 ? "PLaMo is ready."
                 : "PLaMo setup is not installed yet."
         case .plamo:
-            preparePlamoAndSelect()
+            guard isPlamoReady else {
+                isPlamoStatusError = false
+                plamoStatusMessage = "Prepare PLaMo before selecting it."
+                translationProvider = .codex
+                return
+            }
+            TranslationPreferences.translationProvider = .plamo
+            translationProvider = .plamo
+            isPlamoStatusError = false
+            plamoStatusMessage = "PLaMo is ready."
         }
     }
 
-    func preparePlamoAndSelect() {
+    func preparePlamo() {
         guard !isPreparingPlamo else { return }
 
         isPreparingPlamo = true
@@ -122,18 +147,30 @@ private final class SettingsModel: ObservableObject {
                 await MainActor.run {
                     self.isPreparingPlamo = false
                     self.isPlamoStatusError = false
+                    self.isPlamoReady = PlamoSetupService.isSetupComplete
                     self.appendPlamoProgress("PLaMo is ready.")
-                    TranslationPreferences.translationProvider = .plamo
-                    self.translationProvider = .plamo
                 }
             } catch {
                 await MainActor.run {
                     self.isPreparingPlamo = false
                     self.isPlamoStatusError = true
+                    self.isPlamoReady = PlamoSetupService.isSetupComplete
                     self.appendPlamoProgress("ERROR: \(error.localizedDescription)")
                     self.translationProvider = TranslationPreferences.translationProvider
                 }
             }
+        }
+    }
+
+    private func refreshPlamoReadiness() {
+        isPlamoReady = PlamoSetupService.isSetupComplete
+        if !isPlamoReady, translationProvider == .plamo {
+            translationProvider = .codex
+            TranslationPreferences.translationProvider = .codex
+        }
+        if isPlamoReady, !isPreparingPlamo {
+            isPlamoStatusError = false
+            plamoStatusMessage = "PLaMo is ready."
         }
     }
 
@@ -218,13 +255,16 @@ private struct SettingsView: View {
                     set: { model.selectProvider($0) }
                 )) {
                     ForEach(TranslationProvider.allCases) { provider in
-                        Text(provider.label).tag(provider)
+                        Text(provider.label)
+                            .tag(provider)
+                            .disabled(provider == .plamo && !model.isPlamoReady)
                     }
                 }
                 .pickerStyle(.segmented)
                 .labelsHidden()
                 .frame(width: 180)
                 .disabled(model.isPreparingPlamo)
+                .help(model.isPlamoReady ? "Translation model" : "Prepare PLaMo before selecting it")
 
                 if model.isPreparingPlamo {
                     ProgressView()
@@ -234,9 +274,9 @@ private struct SettingsView: View {
                 Spacer()
 
                 Button("Prepare PLaMo") {
-                    model.preparePlamoAndSelect()
+                    model.preparePlamo()
                 }
-                .disabled(model.isPreparingPlamo || PlamoSetupService.isSetupComplete)
+                .disabled(model.isPreparingPlamo || model.isPlamoReady)
             }
 
             Text(model.plamoStatusMessage)

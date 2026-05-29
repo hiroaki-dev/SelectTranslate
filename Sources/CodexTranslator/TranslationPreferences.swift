@@ -10,12 +10,18 @@ enum TranslationPreferences {
     static var translationProvider: TranslationProvider {
         get {
             let savedProvider = UserDefaults.standard.string(forKey: providerDefaultsKey)
-            return savedProvider.flatMap(TranslationProvider.init(rawValue:)) ?? .codex
+            let provider = savedProvider.flatMap(TranslationProvider.init(rawValue:)) ?? .codex
+            if provider == .plamo, !PlamoSetupService.isSetupComplete {
+                UserDefaults.standard.set(TranslationProvider.codex.rawValue, forKey: providerDefaultsKey)
+                return .codex
+            }
+            return provider
         }
         set {
-            guard newValue != translationProvider else { return }
-            UserDefaults.standard.set(newValue.rawValue, forKey: providerDefaultsKey)
-            NotificationCenter.default.post(name: .translationProviderDidChange, object: newValue)
+            let provider = newValue == .plamo && !PlamoSetupService.isSetupComplete ? .codex : newValue
+            guard provider != translationProvider else { return }
+            UserDefaults.standard.set(provider.rawValue, forKey: providerDefaultsKey)
+            NotificationCenter.default.post(name: .translationProviderDidChange, object: provider)
         }
     }
 }

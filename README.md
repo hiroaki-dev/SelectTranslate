@@ -38,7 +38,7 @@ Japanese text is translated to English. Text without Japanese characters is tran
 
 The app does not use `Command + C` or the clipboard to read selected text. It searches the focused element, the focused app, the element under the mouse, and other running apps for exposed selected text. Some apps do not expose selected text through Accessibility; in those apps CodexTranslator will show a no-selection error.
 
-Use the `Engine` segmented control in the panel or `CodexTranslator` > `Settings...` to switch between `Codex` and `PLaMo`. When a translation is already displayed, changing the engine reruns that same source text. The app saves the selected value.
+Use the `Engine` segmented control in the panel or `CodexTranslator` > `Settings...` to switch between `Codex` and `PLaMo`. PLaMo cannot be selected until `Prepare PLaMo` has completed in Settings. When a translation is already displayed, changing the engine reruns that same source text. The app saves the selected value.
 
 Use the `Effort` segmented control in the panel to choose the Codex reasoning effort. It is shown only for the Codex engine. When a Codex translation is already displayed, changing the effort reruns that same source text. The app saves the selected value.
 
@@ -83,7 +83,7 @@ The saved prompt template is rendered and sent to `codex exec` over stdin.
 
 The PLaMo engine uses [`mlx-community/plamo-2-translate`](https://huggingface.co/mlx-community/plamo-2-translate), a 4-bit quantized PLaMo Translation Model for MLX on Apple Silicon. Review the model card and PLaMo community license before use.
 
-The first time you select `PLaMo` from Settings or the translation panel, CodexTranslator creates an app-local Python environment, installs `mlx-lm` and `numba`, and downloads the model. Settings shows the active setup step and live command output, including download progress reported by the underlying tools. The files are stored under:
+Run `Prepare PLaMo` in Settings before selecting the PLaMo engine. CodexTranslator creates an app-local Python environment, installs `mlx-lm` and `numba`, and downloads the model. Settings shows the active setup step and live command output, including download progress reported by the underlying tools. The files are stored under:
 
 ```sh
 ~/Library/Application Support/CodexTranslator/

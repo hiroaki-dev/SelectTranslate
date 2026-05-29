@@ -311,16 +311,20 @@ private struct TranslationOverlayView: View {
 
     private var errorBody: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text(model.message)
-                .font(.system(size: 14))
-                .foregroundStyle(.primary)
-                .textSelection(.enabled)
-                .fixedSize(horizontal: false, vertical: true)
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Details")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+
+                textBox(text: model.message, placeholder: "")
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
 
             if !model.sourceText.isEmpty {
                 simpleTextPane(title: "Original", text: model.sourceText, placeholder: "")
+                    .frame(maxHeight: 140)
             }
-            Spacer()
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }

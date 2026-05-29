@@ -46,13 +46,13 @@ enum TranslationDirection {
 }
 
 enum CodexTranslationError: LocalizedError {
-    case codexCommandFailed(status: Int32, stderr: String)
+    case codexCommandFailed(status: Int32, output: String)
     case emptyResponse
 
     var errorDescription: String? {
         switch self {
-        case let .codexCommandFailed(status, stderr):
-            let detail = stderr.trimmingCharacters(in: .whitespacesAndNewlines)
+        case let .codexCommandFailed(status, output):
+            let detail = Self.conciseError(from: output)
             if detail.isEmpty {
                 return "codex exec exited with status \(status)."
             }
@@ -60,6 +60,22 @@ enum CodexTranslationError: LocalizedError {
         case .emptyResponse:
             return "codex exec returned an empty translation."
         }
+    }
+
+    private static func conciseError(from output: String) -> String {
+        let trimmed = output.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return "" }
+
+        let lines = trimmed
+            .components(separatedBy: .newlines)
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+
+        if let errorLine = lines.last(where: { $0.localizedCaseInsensitiveContains("ERROR:") }) {
+            return String(errorLine.prefix(900))
+        }
+
+        return String(trimmed.prefix(1200))
     }
 }
 
@@ -118,18 +134,26 @@ final class CodexTranslationService {
             let stderrData = stderr.fileHandleForReading.readDataToEndOfFile()
             process.waitUntilExit()
 
+            let stdoutText = String(data: stdoutData, encoding: .utf8) ?? ""
             let stderrText = String(data: stderrData, encoding: .utf8) ?? ""
+            let combinedOutput = [stderrText, stdoutText]
+                .filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+                .joined(separator: "\n")
+
             if process.terminationStatus != 0 {
                 throw CodexTranslationError.codexCommandFailed(
                     status: process.terminationStatus,
-                    stderr: stderrText
+                    output: combinedOutput
                 )
             }
 
             let fileText = (try? String(contentsOf: outputURL, encoding: .utf8)) ?? ""
-            let stdoutText = String(data: stdoutData, encoding: .utf8) ?? ""
             let translated = (fileText.isEmpty ? stdoutText : fileText)
                 .trimmingCharacters(in: .whitespacesAndNewlines)
+
+            if translated.localizedCaseInsensitiveContains("ERROR:") {
+                throw CodexTranslationError.codexCommandFailed(status: process.terminationStatus, output: translated)
+            }
 
             guard !translated.isEmpty else {
                 throw CodexTranslationError.emptyResponse

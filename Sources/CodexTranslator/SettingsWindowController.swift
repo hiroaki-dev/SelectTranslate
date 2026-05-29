@@ -250,21 +250,15 @@ private struct SettingsView: View {
                 Text("Model")
                     .font(.system(size: 14, weight: .semibold))
 
-                Picker("", selection: Binding(
-                    get: { model.translationProvider },
-                    set: { model.selectProvider($0) }
-                )) {
-                    ForEach(TranslationProvider.allCases) { provider in
-                        Text(provider.label)
-                            .tag(provider)
-                            .disabled(provider == .plamo && !model.isPlamoReady)
-                    }
-                }
-                .pickerStyle(.segmented)
-                .labelsHidden()
-                .frame(width: 180)
-                .disabled(model.isPreparingPlamo)
-                .help(model.isPlamoReady ? "Translation model" : "Prepare PLaMo before selecting it")
+                ProviderSegmentedControl(
+                    selection: Binding(
+                        get: { model.translationProvider },
+                        set: { model.selectProvider($0) }
+                    ),
+                    isPlamoReady: model.isPlamoReady,
+                    isDisabled: model.isPreparingPlamo,
+                    width: 180
+                )
 
                 if model.isPreparingPlamo {
                     ProgressView()

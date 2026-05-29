@@ -385,21 +385,15 @@ private struct TranslationOverlayView: View {
                 .lineLimit(1)
                 .fixedSize(horizontal: true, vertical: false)
 
-            Picker("", selection: Binding(
-                get: { model.translationProvider },
-                set: { model.setProviderFromUserSelection($0) }
-            )) {
-                ForEach(TranslationProvider.allCases) { provider in
-                    Text(provider.label)
-                        .tag(provider)
-                        .disabled(provider == .plamo && !model.isPlamoReady)
-                }
-            }
-            .pickerStyle(.segmented)
-            .labelsHidden()
-            .frame(width: 132)
-            .disabled(model.isLoading || model.isBackTranslating)
-            .help(model.isPlamoReady ? "Translation engine" : "Prepare PLaMo in Settings before selecting it")
+            ProviderSegmentedControl(
+                selection: Binding(
+                    get: { model.translationProvider },
+                    set: { model.setProviderFromUserSelection($0) }
+                ),
+                isPlamoReady: model.isPlamoReady,
+                isDisabled: model.isLoading || model.isBackTranslating,
+                width: 132
+            )
         }
     }
 

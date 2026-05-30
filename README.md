@@ -36,7 +36,7 @@ The translation window is resizable.
 
 Japanese text is translated to English. Text without Japanese characters is translated to Japanese.
 
-The app does not use `Command + C` or the clipboard to read selected text. It searches the focused element, the focused app, the element under the mouse, and other running apps for exposed selected text, including Accessibility Text Marker ranges used by some browsers and custom editors. Some apps do not expose selected text through Accessibility; in those apps CodexTranslator will show a no-selection error.
+The app first reads selected text through Accessibility without touching the clipboard. If an app does not expose selected text through Accessibility, CodexTranslator preserves the current clipboard, sends `Command + C`, captures the selected text, and restores the previous clipboard immediately before translation starts.
 
 Use the `Engine` segmented control in the panel or `CodexTranslator` > `Settings...` to switch between `Codex` and `PLaMo`. PLaMo cannot be selected until `Prepare PLaMo` has completed in Settings. When a translation is already displayed, changing the engine reruns that same source text. The app saves the selected value.
 

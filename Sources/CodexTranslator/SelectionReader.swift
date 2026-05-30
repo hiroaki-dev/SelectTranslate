@@ -1,5 +1,6 @@
 import ApplicationServices
 import AppKit
+import Carbon
 import Foundation
 
 enum SelectionReaderError: LocalizedError {
@@ -59,6 +60,10 @@ final class SelectionReader {
             ) {
                 return selectedText
             }
+        }
+
+        if let selectedText = await selectedTextFromClipboardPreservingCopy() {
+            return selectedText
         }
 
         throw SelectionReaderError.noSelectedText
@@ -396,6 +401,70 @@ final class SelectionReader {
         return elementRef
     }
 
+    private func selectedTextFromClipboardPreservingCopy() async -> String? {
+        let pasteboard = NSPasteboard.general
+        let snapshot = PasteboardSnapshot(pasteboard: pasteboard)
+        let initialChangeCount = pasteboard.changeCount
+
+        try? await Task.sleep(nanoseconds: 80_000_000)
+        sendCopyShortcut()
+
+        let deadline = Date().addingTimeInterval(0.8)
+        var selectedText: String?
+
+        while Date() < deadline {
+            if pasteboard.changeCount != initialChangeCount,
+               let copiedText = text(from: pasteboard) {
+                selectedText = copiedText
+                break
+            }
+
+            try? await Task.sleep(nanoseconds: 40_000_000)
+        }
+
+        snapshot.restore(to: pasteboard)
+        return selectedText
+    }
+
+    private func sendCopyShortcut() {
+        guard let source = CGEventSource(stateID: .hidSystemState),
+              let keyDown = CGEvent(
+                  keyboardEventSource: source,
+                  virtualKey: CGKeyCode(kVK_ANSI_C),
+                  keyDown: true
+              ),
+              let keyUp = CGEvent(
+                  keyboardEventSource: source,
+                  virtualKey: CGKeyCode(kVK_ANSI_C),
+                  keyDown: false
+              ) else {
+            return
+        }
+
+        keyDown.flags = .maskCommand
+        keyUp.flags = .maskCommand
+        keyDown.post(tap: .cghidEventTap)
+        keyUp.post(tap: .cghidEventTap)
+    }
+
+    private func text(from pasteboard: NSPasteboard) -> String? {
+        let textTypes: [NSPasteboard.PasteboardType] = [
+            .string,
+            NSPasteboard.PasteboardType("public.utf8-plain-text"),
+            NSPasteboard.PasteboardType("NSStringPboardType")
+        ]
+
+        for type in textTypes {
+            if let text = pasteboard.string(forType: type),
+               let nonEmptyText = nonEmpty(text) {
+                return nonEmptyText
+            }
+        }
+
+        let strings = pasteboard.readObjects(forClasses: [NSString.self], options: nil) as? [NSString]
+        return strings?.compactMap { nonEmpty($0 as String) }.first
+    }
+
     private func nonEmpty(_ text: String) -> String? {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         return trimmed.isEmpty ? nil : trimmed
@@ -407,4 +476,42 @@ final class SelectionReader {
     private static let selectedTextMarkerRangeAttribute = "AXSelectedTextMarkerRange" as CFString
     private static let stringForTextMarkerRangeParameterizedAttribute = "AXStringForTextMarkerRange" as CFString
     private static let attributedStringForTextMarkerRangeParameterizedAttribute = "AXAttributedStringForTextMarkerRange" as CFString
+}
+
+private struct PasteboardSnapshot {
+    private let itemData: [[NSPasteboard.PasteboardType: Data]]
+
+    init(pasteboard: NSPasteboard) {
+        itemData = pasteboard.pasteboardItems?.map { item in
+            var dataByType: [NSPasteboard.PasteboardType: Data] = [:]
+            for type in item.types {
+                if let data = item.data(forType: type) {
+                    dataByType[type] = data
+                }
+            }
+            return dataByType
+        } ?? []
+    }
+
+    func restore(to pasteboard: NSPasteboard) {
+        pasteboard.clearContents()
+
+        let items = itemData.compactMap { dataByType -> NSPasteboardItem? in
+            guard !dataByType.isEmpty else {
+                return nil
+            }
+
+            let item = NSPasteboardItem()
+            for (type, data) in dataByType {
+                item.setData(data, forType: type)
+            }
+            return item
+        }
+
+        guard !items.isEmpty else {
+            return
+        }
+
+        pasteboard.writeObjects(items)
+    }
 }

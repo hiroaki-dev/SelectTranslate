@@ -231,9 +231,12 @@ final class TranslationPanelController {
     }
 
     private func showPanel() {
+        let shouldCenter = panel == nil
         let panel = panel ?? makePanel()
         self.panel = panel
-        position(panel)
+        if shouldCenter {
+            panel.center()
+        }
         if shouldActivateOnNextShow {
             shouldActivateOnNextShow = false
             NSApp.activate(ignoringOtherApps: true)
@@ -277,33 +280,6 @@ final class TranslationPanelController {
         )
 
         return panel
-    }
-
-    private func position(_ panel: NSPanel) {
-        let screen = NSScreen.screenContainingMouse ?? NSScreen.main
-        let visibleFrame = screen?.visibleFrame ?? NSRect(x: 0, y: 0, width: 1200, height: 800)
-        let size = panel.frame.size
-        let mouse = NSEvent.mouseLocation
-
-        var origin = NSPoint(
-            x: mouse.x - (size.width / 2),
-            y: mouse.y - size.height - 18
-        )
-
-        if origin.x < visibleFrame.minX + 16 {
-            origin.x = visibleFrame.minX + 16
-        }
-        if origin.x + size.width > visibleFrame.maxX - 16 {
-            origin.x = visibleFrame.maxX - size.width - 16
-        }
-        if origin.y < visibleFrame.minY + 16 {
-            origin.y = visibleFrame.minY + 16
-        }
-        if origin.y + size.height > visibleFrame.maxY - 16 {
-            origin.y = visibleFrame.maxY - size.height - 16
-        }
-
-        panel.setFrame(NSRect(origin: origin, size: size), display: true)
     }
 }
 
@@ -561,15 +537,6 @@ private struct TranslationOverlayView: View {
                 .textSelection(.enabled)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(12)
-        }
-    }
-}
-
-private extension NSScreen {
-    static var screenContainingMouse: NSScreen? {
-        let mouse = NSEvent.mouseLocation
-        return screens.first { screen in
-            screen.frame.contains(mouse)
         }
     }
 }

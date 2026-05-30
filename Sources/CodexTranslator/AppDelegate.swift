@@ -11,6 +11,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var hotKeyManager: HotKeyManager?
     private var statusItem: NSStatusItem?
     private var translationTask: Task<Void, Never>?
+    private var accessibilityRetryTask: Task<Void, Never>?
     private var currentTranslationRequest: TranslationRequest?
     private var currentTranslationResult: TranslationResult?
 
@@ -32,6 +33,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationWillTerminate(_ notification: Notification) {
+        accessibilityRetryTask?.cancel()
         hotKeyManager?.unregister()
     }
 
@@ -132,7 +134,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         NSApp.terminate(nil)
     }
 
-    private func startTranslation() {
+    private func startTranslation(cancelPendingAccessibilityRetry: Bool = true) {
+        if cancelPendingAccessibilityRetry {
+            cancelAccessibilityRetry()
+        }
+
         panelController.activateOnNextShow()
 
         guard translationTask == nil else {
@@ -203,10 +209,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             currentTranslationRequest = nil
             currentTranslationResult = nil
             requestAccessibilityPermissionFromShortcutIfNeeded()
+            scheduleAccessibilityRetryAfterGrant()
             panelController.showError(
                 source: nil,
                 title: "Accessibility Permission Required",
-                message: "Allow CodexTranslator in System Settings > Privacy & Security > Accessibility, then press Control + F again."
+                message: "Allow CodexTranslator in System Settings > Privacy & Security > Accessibility. The translation will retry automatically after permission is enabled."
             )
         } catch SelectionReaderError.noSelectedText {
             currentTranslationRequest = nil
@@ -231,6 +238,34 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
 
         selectionReader.requestAccessibilityPermissionPromptIfNeeded()
+    }
+
+    private func scheduleAccessibilityRetryAfterGrant() {
+        accessibilityRetryTask?.cancel()
+        accessibilityRetryTask = Task { [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: 500_000_000)
+                guard !Task.isCancelled else { return }
+
+                let isTrusted = await MainActor.run { [weak self] in
+                    self?.selectionReader.isAccessibilityTrusted == true
+                }
+
+                guard isTrusted else { continue }
+
+                await MainActor.run { [weak self] in
+                    guard let self else { return }
+                    self.accessibilityRetryTask = nil
+                    self.startTranslation(cancelPendingAccessibilityRetry: false)
+                }
+                return
+            }
+        }
+    }
+
+    private func cancelAccessibilityRetry() {
+        accessibilityRetryTask?.cancel()
+        accessibilityRetryTask = nil
     }
 
     private func translate(request: TranslationRequest, effort: ReasoningEffort, provider: TranslationProvider) async {

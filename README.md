@@ -54,10 +54,9 @@ If the shortcut shows a permission error:
 
 1. Press `Control + F`; if permission is missing, CodexTranslator asks macOS to show the Accessibility prompt.
 2. Approve the macOS prompt, or enable `CodexTranslator` in the Accessibility list.
-3. Quit and reopen CodexTranslator.
-4. Press `Control + F` again.
+3. CodexTranslator retries the pending translation automatically after permission is enabled.
 
-CodexTranslator only auto-requests the permission once per launch. Use `CodexTranslator` > `Actions` > `Open Accessibility Settings` to request it again or open the settings page manually.
+CodexTranslator requests the permission prompt each time `Control + F` is pressed without Accessibility permission. Use `CodexTranslator` > `Actions` > `Open Accessibility Settings` to request it again or open the settings page manually.
 
 `swift run CodexTranslator` and `open build/CodexTranslator.app` are treated as different apps by macOS privacy permissions. Grant permission to the `.app` version when using the normal launch flow.
 

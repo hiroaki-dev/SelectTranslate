@@ -4,18 +4,12 @@ import Foundation
 
 enum SelectionReaderError: LocalizedError {
     case accessibilityPermissionRequired
-    case chromeAutomationPermissionRequired
-    case chromeJavaScriptAppleEventsDisabled
     case noSelectedText
 
     var errorDescription: String? {
         switch self {
         case .accessibilityPermissionRequired:
             return "Accessibility permission is required to read the selected text."
-        case .chromeAutomationPermissionRequired:
-            return "Automation permission is required to read selected text from Chrome."
-        case .chromeJavaScriptAppleEventsDisabled:
-            return "Chrome is blocking JavaScript from Apple Events."
         case .noSelectedText:
             return "No selected text is exposed through Accessibility."
         }
@@ -65,10 +59,6 @@ final class SelectionReader {
             ) {
                 return selectedText
             }
-        }
-
-        if let browserSelectedText = try chromiumBrowserSelectedText(preferredProcessIdentifier: preferredProcessIdentifier) {
-            return browserSelectedText
         }
 
         throw SelectionReaderError.noSelectedText
@@ -346,110 +336,8 @@ final class SelectionReader {
         return elementRef
     }
 
-    private func chromiumBrowserSelectedText(preferredProcessIdentifier: pid_t?) throws -> String? {
-        guard let application = browserApplication(preferredProcessIdentifier: preferredProcessIdentifier),
-              let bundleIdentifier = application.bundleIdentifier,
-              Self.chromeBundleIdentifiers.contains(bundleIdentifier) else {
-            return nil
-        }
-
-        let script = """
-        tell application id "\(bundleIdentifier)"
-            if not (exists front window) then return ""
-            tell active tab of front window
-                return execute javascript "\(Self.appleScriptEscaped(Self.chromeSelectionJavaScript))"
-            end tell
-        end tell
-        """
-
-        var error: NSDictionary?
-        guard let appleScript = NSAppleScript(source: script) else {
-            return nil
-        }
-
-        let result = appleScript.executeAndReturnError(&error)
-        if let error {
-            if Self.isChromeJavaScriptAppleEventsDisabled(error) {
-                throw SelectionReaderError.chromeJavaScriptAppleEventsDisabled
-            }
-
-            if Self.isAutomationPermissionError(error) {
-                throw SelectionReaderError.chromeAutomationPermissionRequired
-            }
-
-            return nil
-        }
-
-        return nonEmpty(result.stringValue ?? "")
-    }
-
-    private func browserApplication(preferredProcessIdentifier: pid_t?) -> NSRunningApplication? {
-        if let preferredProcessIdentifier,
-           let application = NSWorkspace.shared.runningApplications.first(where: {
-               $0.processIdentifier == preferredProcessIdentifier
-           }) {
-            return application
-        }
-
-        return NSWorkspace.shared.frontmostApplication
-    }
-
     private func nonEmpty(_ text: String) -> String? {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         return trimmed.isEmpty ? nil : trimmed
-    }
-
-    private static let chromeBundleIdentifiers: Set<String> = [
-        "com.google.Chrome",
-        "com.google.Chrome.beta",
-        "com.google.Chrome.canary",
-        "com.google.Chrome.dev"
-    ]
-
-    private static let chromeSelectionJavaScript = [
-        #"(() => {"#,
-        #"const selection = window.getSelection ? window.getSelection().toString() : "";"#,
-        #"if (selection) return selection;"#,
-        #"const element = document.activeElement;"#,
-        #"if (!element || typeof element.value !== "string") return "";"#,
-        #"const start = element.selectionStart;"#,
-        #"const end = element.selectionEnd;"#,
-        #"if (typeof start !== "number" || typeof end !== "number" || end <= start) return "";"#,
-        #"return element.value.substring(start, end);"#,
-        #"})()"#
-    ].joined(separator: " ")
-
-    private static func appleScriptEscaped(_ text: String) -> String {
-        text
-            .replacingOccurrences(of: "\\", with: "\\\\")
-            .replacingOccurrences(of: "\"", with: "\\\"")
-            .replacingOccurrences(of: "\n", with: "\\n")
-    }
-
-    private static func isChromeJavaScriptAppleEventsDisabled(_ error: NSDictionary) -> Bool {
-        let message = appleScriptErrorMessage(error)
-        return message.localizedCaseInsensitiveContains("JavaScript through AppleScript")
-            || message.localizedCaseInsensitiveContains("Allow JavaScript from Apple Events")
-    }
-
-    private static func isAutomationPermissionError(_ error: NSDictionary) -> Bool {
-        if appleScriptErrorNumber(error) == -1743 {
-            return true
-        }
-
-        let message = appleScriptErrorMessage(error)
-        return message.localizedCaseInsensitiveContains("Not authorized to send Apple events")
-    }
-
-    private static func appleScriptErrorMessage(_ error: NSDictionary) -> String {
-        error["NSAppleScriptErrorMessage"] as? String ?? ""
-    }
-
-    private static func appleScriptErrorNumber(_ error: NSDictionary) -> Int? {
-        if let number = error["NSAppleScriptErrorNumber"] as? NSNumber {
-            return number.intValue
-        }
-
-        return error["NSAppleScriptErrorNumber"] as? Int
     }
 }

@@ -38,8 +38,6 @@ Japanese text is translated to English. Text without Japanese characters is tran
 
 The app does not use `Command + C` or the clipboard to read selected text. It searches the focused element, the focused app, the element under the mouse, and other running apps for exposed selected text. Some apps do not expose selected text through Accessibility; in those apps CodexTranslator will show a no-selection error.
 
-For selected text in Chrome web pages, CodexTranslator falls back to reading `window.getSelection().toString()` from the active tab when Accessibility does not expose the selection. macOS may ask for Automation permission to control Chrome the first time this fallback is used. Chrome also needs `View` > `Developer` > `Allow JavaScript from Apple Events` enabled for this fallback.
-
 Use the `Engine` segmented control in the panel or `CodexTranslator` > `Settings...` to switch between `Codex` and `PLaMo`. PLaMo cannot be selected until `Prepare PLaMo` has completed in Settings. When a translation is already displayed, changing the engine reruns that same source text. The app saves the selected value.
 
 Use the `Effort` segmented control in the panel to choose the Codex reasoning effort. It is shown only for the Codex engine. When a Codex translation is already displayed, changing the effort reruns that same source text. The app saves the selected value.

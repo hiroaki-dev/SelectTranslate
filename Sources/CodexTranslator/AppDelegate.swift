@@ -228,22 +228,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 title: "Accessibility Permission Required",
                 message: "Allow CodexTranslator in System Settings > Privacy & Security > Accessibility. The translation will retry automatically after permission is enabled."
             )
-        } catch SelectionReaderError.chromeAutomationPermissionRequired {
-            currentTranslationRequest = nil
-            currentTranslationResult = nil
-            panelController.showError(
-                source: nil,
-                title: "Chrome Automation Permission Required",
-                message: "Allow CodexTranslator to control Google Chrome in System Settings > Privacy & Security > Automation, then select text in Chrome and press Control + F again."
-            )
-        } catch SelectionReaderError.chromeJavaScriptAppleEventsDisabled {
-            currentTranslationRequest = nil
-            currentTranslationResult = nil
-            panelController.showError(
-                source: nil,
-                title: "Chrome Setting Required",
-                message: "In Google Chrome, enable View > Developer > Allow JavaScript from Apple Events, then select text and press Control + F again."
-            )
         } catch SelectionReaderError.noSelectedText {
             currentTranslationRequest = nil
             currentTranslationResult = nil

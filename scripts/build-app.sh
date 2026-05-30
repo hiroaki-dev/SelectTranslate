@@ -40,8 +40,6 @@ cat > "$CONTENTS_DIR/Info.plist" <<'PLIST'
   <string>13.0</string>
   <key>NSHighResolutionCapable</key>
   <true/>
-  <key>NSAppleEventsUsageDescription</key>
-  <string>CodexTranslator uses Apple Events to read selected text from Chrome pages when Accessibility cannot expose the selection.</string>
 </dict>
 </plist>
 PLIST

@@ -40,29 +40,6 @@ cat > "$CONTENTS_DIR/Info.plist" <<'PLIST'
   <string>13.0</string>
   <key>NSHighResolutionCapable</key>
   <true/>
-  <key>NSServices</key>
-  <array>
-    <dict>
-      <key>NSMenuItem</key>
-      <dict>
-        <key>default</key>
-        <string>Translate with CodexTranslator</string>
-      </dict>
-      <key>NSMessage</key>
-      <string>translateSelectionService</string>
-      <key>NSPortName</key>
-      <string>CodexTranslator</string>
-      <key>NSRequiredContext</key>
-      <dict/>
-      <key>NSRestricted</key>
-      <false/>
-      <key>NSSendTypes</key>
-      <array>
-        <string>NSStringPboardType</string>
-        <string>public.utf8-plain-text</string>
-      </array>
-    </dict>
-  </array>
 </dict>
 </plist>
 PLIST

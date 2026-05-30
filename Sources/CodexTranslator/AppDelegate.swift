@@ -3,8 +3,6 @@ import Carbon
 
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
-    private static let serviceMenuTitle = "Translate with CodexTranslator"
-
     private let selectionReader = SelectionReader()
     private let translator = CodexTranslationService()
     private let panelController = TranslationPanelController()
@@ -14,7 +12,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var statusItem: NSStatusItem?
     private var translationTask: Task<Void, Never>?
     private var accessibilityRetryTask: Task<Void, Never>?
-    private var serviceSelectionContinuation: CheckedContinuation<String?, Never>?
     private var currentTranslationRequest: TranslationRequest?
     private var currentTranslationResult: TranslationResult?
 
@@ -31,7 +28,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         configureApplicationMenu()
         configureStatusItem()
-        configureServicesProvider()
         registerHotKey()
         panelController.showReady(isAccessibilityTrusted: selectionReader.isAccessibilityTrusted)
     }
@@ -95,11 +91,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         statusItem = item
     }
 
-    private func configureServicesProvider() {
-        NSApp.servicesProvider = self
-        NSUpdateDynamicServices()
-    }
-
     private func makeMenuItem(title: String, action: Selector, keyEquivalent: String = "") -> NSMenuItem {
         let item = NSMenuItem(title: title, action: action, keyEquivalent: keyEquivalent)
         item.target = self
@@ -143,27 +134,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         NSApp.terminate(nil)
     }
 
-    @objc func translateSelectionService(
-        _ pasteboard: NSPasteboard,
-        userData: String?,
-        error: AutoreleasingUnsafeMutablePointer<NSString?>
-    ) {
-        guard let sourceText = serviceText(from: pasteboard) else {
-            error.pointee = "CodexTranslator could not read selected text from the service pasteboard." as NSString
-            serviceSelectionContinuation?.resume(returning: nil)
-            serviceSelectionContinuation = nil
-            return
-        }
-
-        if let continuation = serviceSelectionContinuation {
-            serviceSelectionContinuation = nil
-            continuation.resume(returning: sourceText)
-            return
-        }
-
-        startTranslation(sourceText: sourceText)
-    }
-
     private func startTranslation(
         cancelPendingAccessibilityRetry: Bool = true,
         preferredProcessIdentifier: pid_t? = nil,
@@ -191,34 +161,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             await self.translateCurrentSelection(
                 preferredProcessIdentifier: processIdentifier,
                 isAccessibilityRetry: isAccessibilityRetry
-            )
-        }
-    }
-
-    private func startTranslation(sourceText: String) {
-        cancelAccessibilityRetry()
-        panelController.activateOnNextShow()
-
-        guard translationTask == nil else {
-            panelController.showError(
-                source: nil,
-                title: "Translation Running",
-                message: "The current translation is still running."
-            )
-            return
-        }
-
-        let direction = TranslationDirection.detect(sourceText)
-        let request = TranslationRequest(sourceText: sourceText, direction: direction)
-        currentTranslationRequest = request
-
-        translationTask = Task { [weak self] in
-            guard let self else { return }
-            defer { self.translationTask = nil }
-            await self.translate(
-                request: request,
-                effort: self.panelController.reasoningEffort,
-                provider: self.panelController.translationProvider
             )
         }
     }
@@ -287,19 +229,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 message: "Allow CodexTranslator in System Settings > Privacy & Security > Accessibility. The translation will retry automatically after permission is enabled."
             )
         } catch SelectionReaderError.noSelectedText {
-            if !isAccessibilityRetry,
-               let serviceText = await requestSelectionThroughService(preferredProcessIdentifier: preferredProcessIdentifier) {
-                let direction = TranslationDirection.detect(serviceText)
-                let request = TranslationRequest(sourceText: serviceText, direction: direction)
-                currentTranslationRequest = request
-                await translate(
-                    request: request,
-                    effort: panelController.reasoningEffort,
-                    provider: panelController.translationProvider
-                )
-                return
-            }
-
             currentTranslationRequest = nil
             currentTranslationResult = nil
             if isAccessibilityRetry {
@@ -312,7 +241,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 panelController.showError(
                     source: nil,
                     title: "No Selected Text",
-                    message: "Select text before pressing Control + F. This app did not expose selected text through Accessibility, and the CodexTranslator service was not available for the selection."
+                    message: "Select text before pressing Control + F. Some apps do not expose selected text through Accessibility."
                 )
             }
         } catch {
@@ -330,59 +259,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
 
         selectionReader.requestAccessibilityPermissionPromptIfNeeded()
-    }
-
-    private func requestSelectionThroughService(preferredProcessIdentifier: pid_t?) async -> String? {
-        guard serviceSelectionContinuation == nil else {
-            return nil
-        }
-
-        return await withCheckedContinuation { continuation in
-            serviceSelectionContinuation = continuation
-
-            let didTriggerService = selectionReader.triggerServiceMenuItem(
-                preferredProcessIdentifier: preferredProcessIdentifier,
-                title: Self.serviceMenuTitle
-            )
-
-            guard didTriggerService else {
-                serviceSelectionContinuation = nil
-                continuation.resume(returning: nil)
-                return
-            }
-
-            Task { @MainActor in
-                try? await Task.sleep(nanoseconds: 1_500_000_000)
-                guard self.serviceSelectionContinuation != nil else {
-                    return
-                }
-
-                self.serviceSelectionContinuation = nil
-                continuation.resume(returning: nil)
-            }
-        }
-    }
-
-    private func serviceText(from pasteboard: NSPasteboard) -> String? {
-        let textTypes: [NSPasteboard.PasteboardType] = [
-            .string,
-            NSPasteboard.PasteboardType("NSStringPboardType")
-        ]
-
-        for type in textTypes {
-            if let text = pasteboard.string(forType: type),
-               let nonEmptyText = nonEmpty(text) {
-                return nonEmptyText
-            }
-        }
-
-        let strings = pasteboard.readObjects(forClasses: [NSString.self], options: nil) as? [NSString]
-        return strings?.compactMap { nonEmpty($0 as String) }.first
-    }
-
-    private func nonEmpty(_ text: String) -> String? {
-        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        return trimmed.isEmpty ? nil : trimmed
     }
 
     private func scheduleAccessibilityRetryAfterGrant(preferredProcessIdentifier: pid_t?) {

@@ -21,6 +21,7 @@ final class SelectionReader {
     private let maxSearchDepth = 6
     private let maxVisitedElements = 900
     private let accessibilityTimeout: Float = 0.08
+    private let maxMenuSearchDepth = 10
 
     var isAccessibilityTrusted: Bool {
         AXIsProcessTrusted()
@@ -62,6 +63,29 @@ final class SelectionReader {
         }
 
         throw SelectionReaderError.noSelectedText
+    }
+
+    func triggerServiceMenuItem(preferredProcessIdentifier: pid_t?, title: String) -> Bool {
+        guard isAccessibilityTrusted,
+              let preferredProcessIdentifier,
+              preferredProcessIdentifier != ProcessInfo.processInfo.processIdentifier else {
+            return false
+        }
+
+        let applicationElement = AXUIElementCreateApplication(preferredProcessIdentifier)
+        AXUIElementSetMessagingTimeout(applicationElement, accessibilityTimeout)
+
+        guard let menuBar = elementAttribute(Self.menuBarAttribute, from: applicationElement) else {
+            return false
+        }
+
+        var visitedElements = Set<CFHashCode>()
+        return pressMenuItem(
+            title: title,
+            in: menuBar,
+            maxDepth: maxMenuSearchDepth,
+            visitedElements: &visitedElements
+        )
     }
 
     private func candidateElements(
@@ -396,11 +420,105 @@ final class SelectionReader {
         return elementRef
     }
 
+    private func pressMenuItem(
+        title targetTitle: String,
+        in element: AXUIElement,
+        maxDepth: Int,
+        visitedElements: inout Set<CFHashCode>
+    ) -> Bool {
+        guard maxDepth >= 0 else {
+            return false
+        }
+
+        let elementHash = CFHash(element)
+        guard !visitedElements.contains(elementHash) else {
+            return false
+        }
+
+        visitedElements.insert(elementHash)
+        AXUIElementSetMessagingTimeout(element, accessibilityTimeout)
+
+        if menuItemTitle(of: element) == targetTitle,
+           isElementEnabled(element),
+           AXUIElementPerformAction(element, kAXPressAction as CFString) == .success {
+            return true
+        }
+
+        let initialChildren = menuChildElements(from: element)
+        if shouldOpenMenuElement(element, childCount: initialChildren.count) {
+            AXUIElementPerformAction(element, kAXPressAction as CFString)
+            Thread.sleep(forTimeInterval: 0.05)
+            let openedChildren = menuChildElements(from: element)
+            if searchMenuChildren(openedChildren, title: targetTitle, maxDepth: maxDepth, visitedElements: &visitedElements) {
+                return true
+            }
+        }
+
+        return searchMenuChildren(initialChildren, title: targetTitle, maxDepth: maxDepth, visitedElements: &visitedElements)
+    }
+
+    private func searchMenuChildren(
+        _ children: [AXUIElement],
+        title: String,
+        maxDepth: Int,
+        visitedElements: inout Set<CFHashCode>
+    ) -> Bool {
+        for child in children {
+            if pressMenuItem(
+                title: title,
+                in: child,
+                maxDepth: maxDepth - 1,
+                visitedElements: &visitedElements
+            ) {
+                return true
+            }
+        }
+
+        return false
+    }
+
+    private func shouldOpenMenuElement(_ element: AXUIElement, childCount: Int) -> Bool {
+        guard childCount > 0 else {
+            return menuRole(of: element) == "AXMenuBarItem"
+        }
+
+        let role = menuRole(of: element)
+        return role == "AXMenuBarItem" || role == "AXMenuItem"
+    }
+
+    private func menuChildElements(from element: AXUIElement) -> [AXUIElement] {
+        [
+            kAXChildrenAttribute as CFString,
+            kAXVisibleChildrenAttribute as CFString
+        ].flatMap { childElements(for: $0, from: element) }
+    }
+
+    private func menuItemTitle(of element: AXUIElement) -> String? {
+        copyAttribute(kAXTitleAttribute as CFString, from: element) as? String
+    }
+
+    private func menuRole(of element: AXUIElement) -> String? {
+        copyAttribute(kAXRoleAttribute as CFString, from: element) as? String
+    }
+
+    private func isElementEnabled(_ element: AXUIElement) -> Bool {
+        guard let enabled = copyAttribute(kAXEnabledAttribute as CFString, from: element) else {
+            return true
+        }
+
+        if CFGetTypeID(enabled) == CFBooleanGetTypeID() {
+            return CFBooleanGetValue((enabled as! CFBoolean))
+        }
+
+        return (enabled as? Bool) ?? true
+    }
+
     private func nonEmpty(_ text: String) -> String? {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         return trimmed.isEmpty ? nil : trimmed
     }
 
+    private static let menuBarAttribute = "AXMenuBar" as CFString
     private static let activeElementAttribute = "AXActiveElement" as CFString
     private static let editableAncestorAttribute = "AXEditableAncestor" as CFString
     private static let highestEditableAncestorAttribute = "AXHighestEditableAncestor" as CFString

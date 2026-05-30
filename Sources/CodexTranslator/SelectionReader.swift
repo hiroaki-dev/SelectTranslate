@@ -141,12 +141,69 @@ final class SelectionReader {
             return selectedText
         }
 
+        if let selectedText = selectedTextFromTextMarkerRange(from: element) {
+            return selectedText
+        }
+
         if let selectedText = selectedTextFromRangeParameter(from: element) {
             return selectedText
         }
 
         if let selectedText = selectedTextFromValueRange(from: element) {
             return selectedText
+        }
+
+        return nil
+    }
+
+    private func selectedTextFromTextMarkerRange(from element: AXUIElement) -> String? {
+        guard let textMarkerRange = copyAttribute(Self.selectedTextMarkerRangeAttribute, from: element) else {
+            return nil
+        }
+
+        if let text = textForTextMarkerRange(textMarkerRange, from: element) {
+            return text
+        }
+
+        return attributedTextForTextMarkerRange(textMarkerRange, from: element)
+    }
+
+    private func textForTextMarkerRange(_ textMarkerRange: CFTypeRef, from element: AXUIElement) -> String? {
+        var textRef: CFTypeRef?
+        let result = AXUIElementCopyParameterizedAttributeValue(
+            element,
+            Self.stringForTextMarkerRangeParameterizedAttribute,
+            textMarkerRange,
+            &textRef
+        )
+
+        guard result == .success, let text = textRef as? String else {
+            return nil
+        }
+
+        return nonEmpty(text)
+    }
+
+    private func attributedTextForTextMarkerRange(_ textMarkerRange: CFTypeRef, from element: AXUIElement) -> String? {
+        var textRef: CFTypeRef?
+        let result = AXUIElementCopyParameterizedAttributeValue(
+            element,
+            Self.attributedStringForTextMarkerRangeParameterizedAttribute,
+            textMarkerRange,
+            &textRef
+        )
+
+        guard result == .success else {
+            return nil
+        }
+
+        if let attributedString = textRef as? NSAttributedString {
+            return nonEmpty(attributedString.string)
+        }
+
+        if let textRef, CFGetTypeID(textRef) == CFAttributedStringGetTypeID() {
+            let attributedString = textRef as! CFAttributedString
+            return nonEmpty(CFAttributedStringGetString(attributedString) as String)
         }
 
         return nil
@@ -284,14 +341,17 @@ final class SelectionReader {
     }
 
     private func childElements(from element: AXUIElement) -> [AXUIElement] {
-        let attributes = [
-            kAXFocusedUIElementAttribute,
-            kAXFocusedWindowAttribute,
-            kAXSelectedChildrenAttribute,
-            kAXVisibleChildrenAttribute,
-            kAXChildrenAttribute,
-            kAXWindowsAttribute
-        ].map { $0 as CFString }
+        let attributes: [CFString] = [
+            kAXFocusedUIElementAttribute as CFString,
+            kAXFocusedWindowAttribute as CFString,
+            Self.activeElementAttribute,
+            Self.highestEditableAncestorAttribute,
+            Self.editableAncestorAttribute,
+            kAXSelectedChildrenAttribute as CFString,
+            kAXVisibleChildrenAttribute as CFString,
+            kAXChildrenAttribute as CFString,
+            kAXWindowsAttribute as CFString
+        ]
 
         return attributes.flatMap { childElements(for: $0, from: element) }
     }
@@ -340,4 +400,11 @@ final class SelectionReader {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         return trimmed.isEmpty ? nil : trimmed
     }
+
+    private static let activeElementAttribute = "AXActiveElement" as CFString
+    private static let editableAncestorAttribute = "AXEditableAncestor" as CFString
+    private static let highestEditableAncestorAttribute = "AXHighestEditableAncestor" as CFString
+    private static let selectedTextMarkerRangeAttribute = "AXSelectedTextMarkerRange" as CFString
+    private static let stringForTextMarkerRangeParameterizedAttribute = "AXStringForTextMarkerRange" as CFString
+    private static let attributedStringForTextMarkerRangeParameterizedAttribute = "AXAttributedStringForTextMarkerRange" as CFString
 }

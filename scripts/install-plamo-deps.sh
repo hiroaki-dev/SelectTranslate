@@ -11,7 +11,7 @@ if [ ! -x "$VENV/bin/python3" ]; then
   python3 -m venv "$VENV"
 fi
 
-"$VENV/bin/python3" -m pip install -U mlx-lm numba
+"$VENV/bin/python3" -m pip install -U mlx-lm numba torch
 HF_HOME="$HF_HOME" "$VENV/bin/python3" -m mlx_lm generate \
   --model mlx-community/plamo-2-translate \
   --trust-remote-code \

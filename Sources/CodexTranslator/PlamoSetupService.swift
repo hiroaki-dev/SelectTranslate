@@ -52,10 +52,10 @@ enum PlamoSetupService {
             progress("Using existing local Python environment.")
         }
 
-        progress("Installing MLX dependencies.")
+        progress("Installing PLaMo dependencies.")
         try run(
             executable: AppPaths.plamoPythonURL,
-            arguments: ["-m", "pip", "install", "-U", "mlx-lm", "numba"],
+            arguments: ["-m", "pip", "install", "-U", "mlx-lm", "numba", "torch"],
             commandName: "python3 -m pip install",
             progress: progress
         )

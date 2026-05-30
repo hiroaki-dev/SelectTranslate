@@ -134,11 +134,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         NSApp.terminate(nil)
     }
 
-    private func startTranslation(cancelPendingAccessibilityRetry: Bool = true) {
+    private func startTranslation(
+        cancelPendingAccessibilityRetry: Bool = true,
+        preferredProcessIdentifier: pid_t? = nil,
+        isAccessibilityRetry: Bool = false
+    ) {
         if cancelPendingAccessibilityRetry {
             cancelAccessibilityRetry()
         }
 
+        let processIdentifier = preferredProcessIdentifier ?? frontmostExternalProcessIdentifier()
         panelController.activateOnNextShow()
 
         guard translationTask == nil else {
@@ -153,7 +158,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         translationTask = Task { [weak self] in
             guard let self else { return }
             defer { self.translationTask = nil }
-            await self.translateCurrentSelection()
+            await self.translateCurrentSelection(
+                preferredProcessIdentifier: processIdentifier,
+                isAccessibilityRetry: isAccessibilityRetry
+            )
         }
     }
 
@@ -193,9 +201,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
-    private func translateCurrentSelection() async {
+    private func translateCurrentSelection(
+        preferredProcessIdentifier: pid_t?,
+        isAccessibilityRetry: Bool
+    ) async {
         do {
-            let sourceText = try await selectionReader.readSelectedText()
+            let sourceText = try await selectionReader.readSelectedText(
+                preferredProcessIdentifier: preferredProcessIdentifier
+            )
             let direction = TranslationDirection.detect(sourceText)
             let request = TranslationRequest(sourceText: sourceText, direction: direction)
             currentTranslationRequest = request
@@ -209,7 +222,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             currentTranslationRequest = nil
             currentTranslationResult = nil
             requestAccessibilityPermissionFromShortcutIfNeeded()
-            scheduleAccessibilityRetryAfterGrant()
+            scheduleAccessibilityRetryAfterGrant(preferredProcessIdentifier: preferredProcessIdentifier)
             panelController.showError(
                 source: nil,
                 title: "Accessibility Permission Required",
@@ -218,11 +231,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         } catch SelectionReaderError.noSelectedText {
             currentTranslationRequest = nil
             currentTranslationResult = nil
-            panelController.showError(
-                source: nil,
-                title: "No Selected Text",
-                message: "Select text before pressing Control + F. Some apps do not expose selected text through Accessibility."
-            )
+            if isAccessibilityRetry {
+                panelController.showError(
+                    source: nil,
+                    title: "Selected Text Unavailable",
+                    message: "Accessibility permission is enabled, but the original selection is no longer available. Return to the app, select text, and press Control + F again."
+                )
+            } else {
+                panelController.showError(
+                    source: nil,
+                    title: "No Selected Text",
+                    message: "Select text before pressing Control + F. Some apps do not expose selected text through Accessibility."
+                )
+            }
         } catch {
             panelController.showError(
                 source: nil,
@@ -240,7 +261,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         selectionReader.requestAccessibilityPermissionPromptIfNeeded()
     }
 
-    private func scheduleAccessibilityRetryAfterGrant() {
+    private func scheduleAccessibilityRetryAfterGrant(preferredProcessIdentifier: pid_t?) {
         accessibilityRetryTask?.cancel()
         accessibilityRetryTask = Task { [weak self] in
             while !Task.isCancelled {
@@ -256,7 +277,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 await MainActor.run { [weak self] in
                     guard let self else { return }
                     self.accessibilityRetryTask = nil
-                    self.startTranslation(cancelPendingAccessibilityRetry: false)
+                    self.startTranslation(
+                        cancelPendingAccessibilityRetry: false,
+                        preferredProcessIdentifier: preferredProcessIdentifier,
+                        isAccessibilityRetry: true
+                    )
                 }
                 return
             }
@@ -266,6 +291,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func cancelAccessibilityRetry() {
         accessibilityRetryTask?.cancel()
         accessibilityRetryTask = nil
+    }
+
+    private func frontmostExternalProcessIdentifier() -> pid_t? {
+        guard let application = NSWorkspace.shared.frontmostApplication,
+              application.processIdentifier != ProcessInfo.processInfo.processIdentifier else {
+            return nil
+        }
+
+        return application.processIdentifier
     }
 
     private func translate(request: TranslationRequest, effort: ReasoningEffort, provider: TranslationProvider) async {

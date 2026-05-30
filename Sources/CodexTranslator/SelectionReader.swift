@@ -37,13 +37,16 @@ final class SelectionReader {
         return AXIsProcessTrustedWithOptions(options)
     }
 
-    func readSelectedText() async throws -> String {
+    func readSelectedText(preferredProcessIdentifier: pid_t? = nil) async throws -> String {
         guard isAccessibilityTrusted else {
             throw SelectionReaderError.accessibilityPermissionRequired
         }
 
         let systemWideElement = AXUIElementCreateSystemWide()
-        let candidates = candidateElements(from: systemWideElement)
+        let candidates = candidateElements(
+            from: systemWideElement,
+            preferredProcessIdentifier: preferredProcessIdentifier
+        )
         var visitedElements = Set<CFHashCode>()
         var remainingElements = maxVisitedElements
 
@@ -61,8 +64,17 @@ final class SelectionReader {
         throw SelectionReaderError.noSelectedText
     }
 
-    private func candidateElements(from systemWideElement: AXUIElement) -> [AXUIElement] {
+    private func candidateElements(
+        from systemWideElement: AXUIElement,
+        preferredProcessIdentifier: pid_t?
+    ) -> [AXUIElement] {
         var candidates: [AXUIElement] = []
+
+        if let preferredProcessIdentifier,
+           preferredProcessIdentifier != ProcessInfo.processInfo.processIdentifier {
+            let preferredApplication = AXUIElementCreateApplication(preferredProcessIdentifier)
+            appendIfExternal(preferredApplication, to: &candidates)
+        }
 
         if let focusedElement = elementAttribute(kAXFocusedUIElementAttribute as CFString, from: systemWideElement) {
             appendIfExternal(focusedElement, to: &candidates)

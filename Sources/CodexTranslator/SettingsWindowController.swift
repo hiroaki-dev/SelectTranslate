@@ -354,11 +354,11 @@ private struct SettingsView: View {
                 }
 
                 GridRow {
-                    Text("api_key")
+                    Text("api_key optional")
                         .font(.system(size: 12, weight: .medium))
                         .foregroundStyle(.secondary)
-                        .frame(width: 72, alignment: .leading)
-                    SecureField("dummy", text: $model.apiKey)
+                        .frame(width: 96, alignment: .leading)
+                    SecureField("", text: $model.apiKey)
                         .textFieldStyle(.roundedBorder)
                 }
 

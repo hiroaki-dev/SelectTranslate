@@ -298,12 +298,6 @@ final class CodexTranslationService {
                 message: "Set base_url in Settings."
             )
         }
-        guard !configuration.apiKey.isEmpty else {
-            throw TranslationServiceError.invalidConfiguration(
-                provider: .openAICompatible,
-                message: "Set api_key in Settings."
-            )
-        }
         guard !configuration.model.isEmpty else {
             throw TranslationServiceError.invalidConfiguration(
                 provider: .openAICompatible,
@@ -327,7 +321,9 @@ final class CodexTranslationService {
         request.httpMethod = "POST"
         request.timeoutInterval = 120
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.setValue("Bearer \(configuration.apiKey)", forHTTPHeaderField: "Authorization")
+        if !configuration.apiKey.isEmpty {
+            request.setValue("Bearer \(configuration.apiKey)", forHTTPHeaderField: "Authorization")
+        }
         request.httpBody = try JSONEncoder().encode(
             OpenAIChatCompletionRequest(
                 model: configuration.model,

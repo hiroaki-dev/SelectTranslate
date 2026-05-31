@@ -2,7 +2,6 @@ import Foundation
 
 enum OpenAICompatibleSettings {
     static let defaultBaseURL = "http://localhost:1234/v1"
-    static let defaultAPIKey = "dummy"
 
     private static let baseURLDefaultsKey = "openAICompatibleBaseURL"
     private static let apiKeyDefaultsKey = "openAICompatibleAPIKey"
@@ -19,7 +18,7 @@ enum OpenAICompatibleSettings {
 
     static var apiKey: String {
         get {
-            normalizedStoredValue(forKey: apiKeyDefaultsKey) ?? defaultAPIKey
+            normalizedStoredValue(forKey: apiKeyDefaultsKey) ?? ""
         }
         set {
             UserDefaults.standard.set(newValue.trimmingCharacters(in: .whitespacesAndNewlines), forKey: apiKeyDefaultsKey)

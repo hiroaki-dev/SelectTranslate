@@ -113,7 +113,7 @@ POST {base_url}/chat/completions
 Configure these values in `CodexTranslator` > `Settings...`:
 
 - `base_url`: include `/v1`, for example `http://localhost:1234/v1`
-- `api_key`: for example `dummy` for LM Studio or `ollama` for Ollama
+- `api_key`: optional; leave it blank for local servers that do not require authentication
 - `model`: the model name served by the local API
 
 The request uses a `system` message that asks for translation output only, and a `user` message containing the source text and target language. It uses `/chat/completions`, not `/completions`.

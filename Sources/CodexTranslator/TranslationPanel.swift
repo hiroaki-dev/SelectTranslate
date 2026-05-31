@@ -403,21 +403,9 @@ private struct TranslationOverlayView: View {
     }
 
     private var errorBody: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            VStack(alignment: .leading, spacing: 8) {
-                Text("Details")
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-
-                textBox(text: model.message, placeholder: "")
-            }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-
-            if !model.sourceText.isEmpty {
-                simpleTextPane(title: "Original", text: model.sourceText, placeholder: "")
-                    .frame(maxHeight: 140)
-            }
+        HStack(alignment: .top, spacing: 12) {
+            simpleTextPane(title: "Original", text: model.sourceText, placeholder: "")
+            simpleTextPane(title: "Details", text: model.message, placeholder: "")
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }

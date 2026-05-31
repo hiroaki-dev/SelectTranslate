@@ -367,7 +367,7 @@ private struct SettingsView: View {
                         .font(.system(size: 12, weight: .medium))
                         .foregroundStyle(.secondary)
                         .frame(width: 72, alignment: .leading)
-                    TextField("Enter the model name served by LM Studio or Ollama", text: $model.apiModel)
+                    TextField("Enter the model name", text: $model.apiModel)
                         .textFieldStyle(.roundedBorder)
                 }
             }

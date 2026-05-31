@@ -65,6 +65,7 @@ private final class SettingsModel: ObservableObject {
             OpenAICompatibleSettings.model = apiModel
         }
     }
+    @Published var isAPIKeyVisible: Bool = false
     @Published var isPlamoReady: Bool
     @Published var isPreparingPlamo: Bool = false
     @Published var plamoStatusMessage: String
@@ -358,8 +359,20 @@ private struct SettingsView: View {
                         .font(.system(size: 12, weight: .medium))
                         .foregroundStyle(.secondary)
                         .frame(width: 96, alignment: .leading)
-                    APIKeySecureField(text: $model.apiKey)
-                        .frame(height: 22)
+                    HStack(spacing: 6) {
+                        APIKeyField(text: $model.apiKey, isSecure: !model.isAPIKeyVisible)
+                            .id(model.isAPIKeyVisible)
+                            .frame(height: 22)
+
+                        Button {
+                            model.isAPIKeyVisible.toggle()
+                        } label: {
+                            Image(systemName: model.isAPIKeyVisible ? "eye.slash" : "eye")
+                                .frame(width: 22, height: 22)
+                        }
+                        .buttonStyle(.plain)
+                        .help(model.isAPIKeyVisible ? "Hide API key" : "Show API key")
+                    }
                 }
 
                 GridRow {
@@ -375,11 +388,12 @@ private struct SettingsView: View {
     }
 }
 
-private struct APIKeySecureField: NSViewRepresentable {
+private struct APIKeyField: NSViewRepresentable {
     @Binding var text: String
+    let isSecure: Bool
 
-    func makeNSView(context: Context) -> NSSecureTextField {
-        let textField = NSSecureTextField()
+    func makeNSView(context: Context) -> NSTextField {
+        let textField = isSecure ? NSSecureTextField() : NSTextField()
         textField.stringValue = text
         textField.delegate = context.coordinator
         textField.isBezeled = true
@@ -390,7 +404,7 @@ private struct APIKeySecureField: NSViewRepresentable {
         return textField
     }
 
-    func updateNSView(_ textField: NSSecureTextField, context: Context) {
+    func updateNSView(_ textField: NSTextField, context: Context) {
         if textField.stringValue != text {
             textField.stringValue = text
         }

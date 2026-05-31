@@ -358,8 +358,8 @@ private struct SettingsView: View {
                         .font(.system(size: 12, weight: .medium))
                         .foregroundStyle(.secondary)
                         .frame(width: 96, alignment: .leading)
-                    SecureField("", text: $model.apiKey)
-                        .textFieldStyle(.roundedBorder)
+                    APIKeySecureField(text: $model.apiKey)
+                        .frame(height: 22)
                 }
 
                 GridRow {
@@ -371,6 +371,48 @@ private struct SettingsView: View {
                         .textFieldStyle(.roundedBorder)
                 }
             }
+        }
+    }
+}
+
+private struct APIKeySecureField: NSViewRepresentable {
+    @Binding var text: String
+
+    func makeNSView(context: Context) -> NSSecureTextField {
+        let textField = NSSecureTextField()
+        textField.stringValue = text
+        textField.delegate = context.coordinator
+        textField.isBezeled = true
+        textField.bezelStyle = .roundedBezel
+        textField.drawsBackground = true
+        textField.font = .systemFont(ofSize: NSFont.systemFontSize)
+        textField.focusRingType = .default
+        return textField
+    }
+
+    func updateNSView(_ textField: NSSecureTextField, context: Context) {
+        if textField.stringValue != text {
+            textField.stringValue = text
+        }
+    }
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(text: $text)
+    }
+
+    final class Coordinator: NSObject, NSTextFieldDelegate {
+        private var text: Binding<String>
+
+        init(text: Binding<String>) {
+            self.text = text
+        }
+
+        func controlTextDidChange(_ notification: Notification) {
+            guard let textField = notification.object as? NSTextField else {
+                return
+            }
+
+            text.wrappedValue = textField.stringValue
         }
     }
 }

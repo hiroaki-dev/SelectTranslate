@@ -3,8 +3,6 @@ import Foundation
 enum OpenAICompatibleSettings {
     static let defaultBaseURL = "http://localhost:1234/v1"
     static let defaultAPIKey = "dummy"
-    static let ollamaBaseURL = "http://localhost:11434/v1"
-    static let ollamaAPIKey = "ollama"
 
     private static let baseURLDefaultsKey = "openAICompatibleBaseURL"
     private static let apiKeyDefaultsKey = "openAICompatibleAPIKey"
@@ -35,16 +33,6 @@ enum OpenAICompatibleSettings {
         set {
             UserDefaults.standard.set(newValue.trimmingCharacters(in: .whitespacesAndNewlines), forKey: modelDefaultsKey)
         }
-    }
-
-    static func useLMStudioDefaults() {
-        baseURL = defaultBaseURL
-        apiKey = defaultAPIKey
-    }
-
-    static func useOllamaDefaults() {
-        baseURL = ollamaBaseURL
-        apiKey = ollamaAPIKey
     }
 
     private static func normalizedStoredValue(forKey key: String) -> String? {

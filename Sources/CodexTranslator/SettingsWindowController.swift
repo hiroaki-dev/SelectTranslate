@@ -151,18 +151,6 @@ private final class SettingsModel: ObservableObject {
         }
     }
 
-    func useLMStudioDefaults() {
-        OpenAICompatibleSettings.useLMStudioDefaults()
-        apiBaseURL = OpenAICompatibleSettings.baseURL
-        apiKey = OpenAICompatibleSettings.apiKey
-    }
-
-    func useOllamaDefaults() {
-        OpenAICompatibleSettings.useOllamaDefaults()
-        apiBaseURL = OpenAICompatibleSettings.baseURL
-        apiKey = OpenAICompatibleSettings.apiKey
-    }
-
     func preparePlamo() {
         guard !isPreparingPlamo else { return }
 
@@ -261,7 +249,9 @@ private struct SettingsView: View {
 
             modelSection
 
-            apiSection
+            if model.translationProvider == .openAICompatible {
+                apiSection
+            }
 
             Divider()
 
@@ -351,16 +341,6 @@ private struct SettingsView: View {
                 }
 
                 Spacer()
-
-                Button("LM Studio") {
-                    model.useLMStudioDefaults()
-                }
-                .help("Set base_url to http://localhost:1234/v1 and api_key to dummy")
-
-                Button("Ollama") {
-                    model.useOllamaDefaults()
-                }
-                .help("Set base_url to http://localhost:11434/v1 and api_key to ollama")
             }
 
             Grid(alignment: .leadingFirstTextBaseline, horizontalSpacing: 12, verticalSpacing: 8) {

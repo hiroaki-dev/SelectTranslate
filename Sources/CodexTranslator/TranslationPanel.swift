@@ -4,7 +4,6 @@ import SwiftUI
 @MainActor
 final class TranslationPanelModel: ObservableObject {
     private static let effortDefaultsKey = "reasoningEffort"
-    private var providerObserver: NSObjectProtocol?
     private var plamoSetupObserver: NSObjectProtocol?
 
     @Published var sourceText: String = ""
@@ -38,17 +37,6 @@ final class TranslationPanelModel: ObservableObject {
         reasoningEffort = savedValue.flatMap(ReasoningEffort.init(rawValue:)) ?? .low
         isPlamoReady = PlamoSetupService.isSetupComplete
         translationProvider = TranslationPreferences.translationProvider
-        providerObserver = NotificationCenter.default.addObserver(
-            forName: .translationProviderDidChange,
-            object: nil,
-            queue: .main
-        ) { [weak self] notification in
-            guard let provider = notification.object as? TranslationProvider else { return }
-            Task { @MainActor in
-                guard self?.translationProvider != provider else { return }
-                self?.translationProvider = provider
-            }
-        }
         plamoSetupObserver = NotificationCenter.default.addObserver(
             forName: .plamoSetupStatusDidChange,
             object: nil,
@@ -61,9 +49,6 @@ final class TranslationPanelModel: ObservableObject {
     }
 
     deinit {
-        if let providerObserver {
-            NotificationCenter.default.removeObserver(providerObserver)
-        }
         if let plamoSetupObserver {
             NotificationCenter.default.removeObserver(plamoSetupObserver)
         }

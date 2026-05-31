@@ -70,7 +70,7 @@ final class TranslationPanelModel: ObservableObject {
     }
 
     func setProviderFromUserSelection(_ provider: TranslationProvider) {
-        guard provider != .plamo || isPlamoReady else {
+        if provider == .plamo, !isPlamoReady {
             message = "Prepare PLaMo in Settings before selecting it."
             return
         }
@@ -368,7 +368,7 @@ private struct TranslationOverlayView: View {
                 ),
                 isPlamoReady: model.isPlamoReady,
                 isDisabled: model.isLoading || model.isBackTranslating,
-                width: 132
+                width: 198
             )
         }
     }

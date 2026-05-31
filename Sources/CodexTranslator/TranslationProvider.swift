@@ -3,6 +3,7 @@ import Foundation
 enum TranslationProvider: String, CaseIterable, Identifiable {
     case codex
     case plamo
+    case openAICompatible
 
     var id: String { rawValue }
 
@@ -12,6 +13,8 @@ enum TranslationProvider: String, CaseIterable, Identifiable {
             return "Codex"
         case .plamo:
             return "PLaMo"
+        case .openAICompatible:
+            return "API"
         }
     }
 
@@ -21,6 +24,8 @@ enum TranslationProvider: String, CaseIterable, Identifiable {
             return "codex exec"
         case .plamo:
             return "PLaMo MLX"
+        case .openAICompatible:
+            return "OpenAI-compatible API"
         }
     }
 }

@@ -20,14 +20,14 @@ final class SettingsWindowController {
     private func makeWindow() -> NSWindow {
         let model = SettingsModel()
         let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 760, height: 660),
+            contentRect: NSRect(x: 0, y: 0, width: 820, height: 760),
             styleMask: [.titled, .closable, .resizable],
             backing: .buffered,
             defer: false
         )
 
         window.title = "Codex Translator Settings"
-        window.minSize = NSSize(width: 640, height: 520)
+        window.minSize = NSSize(width: 700, height: 620)
         window.isReleasedWhenClosed = false
         window.contentView = NSHostingView(
             rootView: SettingsView(model: model) { [weak window] in
@@ -50,6 +50,21 @@ private final class SettingsModel: ObservableObject {
         }
     }
     @Published var translationProvider: TranslationProvider
+    @Published var apiBaseURL: String {
+        didSet {
+            OpenAICompatibleSettings.baseURL = apiBaseURL
+        }
+    }
+    @Published var apiKey: String {
+        didSet {
+            OpenAICompatibleSettings.apiKey = apiKey
+        }
+    }
+    @Published var apiModel: String {
+        didSet {
+            OpenAICompatibleSettings.model = apiModel
+        }
+    }
     @Published var isPlamoReady: Bool
     @Published var isPreparingPlamo: Bool = false
     @Published var plamoStatusMessage: String
@@ -59,6 +74,9 @@ private final class SettingsModel: ObservableObject {
 
     init() {
         promptTemplate = PromptSettings.template
+        apiBaseURL = OpenAICompatibleSettings.baseURL
+        apiKey = OpenAICompatibleSettings.apiKey
+        apiModel = OpenAICompatibleSettings.model
         let plamoReady = PlamoSetupService.isSetupComplete
         isPlamoReady = plamoReady
         translationProvider = TranslationPreferences.translationProvider
@@ -123,7 +141,26 @@ private final class SettingsModel: ObservableObject {
             translationProvider = .plamo
             isPlamoStatusError = false
             plamoStatusMessage = "PLaMo is ready."
+        case .openAICompatible:
+            TranslationPreferences.translationProvider = .openAICompatible
+            translationProvider = .openAICompatible
+            isPlamoStatusError = false
+            plamoStatusMessage = isPlamoReady
+                ? "PLaMo is ready."
+                : "PLaMo setup is not installed yet."
         }
+    }
+
+    func useLMStudioDefaults() {
+        OpenAICompatibleSettings.useLMStudioDefaults()
+        apiBaseURL = OpenAICompatibleSettings.baseURL
+        apiKey = OpenAICompatibleSettings.apiKey
+    }
+
+    func useOllamaDefaults() {
+        OpenAICompatibleSettings.useOllamaDefaults()
+        apiBaseURL = OpenAICompatibleSettings.baseURL
+        apiKey = OpenAICompatibleSettings.apiKey
     }
 
     func preparePlamo() {
@@ -224,6 +261,8 @@ private struct SettingsView: View {
 
             modelSection
 
+            apiSection
+
             Divider()
 
             TextEditor(text: $model.promptTemplate)
@@ -257,7 +296,7 @@ private struct SettingsView: View {
                     ),
                     isPlamoReady: model.isPlamoReady,
                     isDisabled: model.isPreparingPlamo,
-                    width: 180
+                    width: 270
                 )
 
                 if model.isPreparingPlamo {
@@ -296,6 +335,61 @@ private struct SettingsView: View {
                     RoundedRectangle(cornerRadius: 8)
                         .stroke(Color(nsColor: .separatorColor), lineWidth: 1)
                 )
+            }
+        }
+    }
+
+    private var apiSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(alignment: .firstTextBaseline) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("OpenAI Compatible API")
+                        .font(.system(size: 14, weight: .semibold))
+                    Text("base_url must include /v1. Uses POST {base_url}/chat/completions.")
+                        .font(.system(size: 12))
+                        .foregroundStyle(.secondary)
+                }
+
+                Spacer()
+
+                Button("LM Studio") {
+                    model.useLMStudioDefaults()
+                }
+                .help("Set base_url to http://localhost:1234/v1 and api_key to dummy")
+
+                Button("Ollama") {
+                    model.useOllamaDefaults()
+                }
+                .help("Set base_url to http://localhost:11434/v1 and api_key to ollama")
+            }
+
+            Grid(alignment: .leadingFirstTextBaseline, horizontalSpacing: 12, verticalSpacing: 8) {
+                GridRow {
+                    Text("base_url")
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundStyle(.secondary)
+                        .frame(width: 72, alignment: .leading)
+                    TextField("http://localhost:1234/v1", text: $model.apiBaseURL)
+                        .textFieldStyle(.roundedBorder)
+                }
+
+                GridRow {
+                    Text("api_key")
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundStyle(.secondary)
+                        .frame(width: 72, alignment: .leading)
+                    SecureField("dummy", text: $model.apiKey)
+                        .textFieldStyle(.roundedBorder)
+                }
+
+                GridRow {
+                    Text("model")
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundStyle(.secondary)
+                        .frame(width: 72, alignment: .leading)
+                    TextField("Enter the model name served by LM Studio or Ollama", text: $model.apiModel)
+                        .textFieldStyle(.roundedBorder)
+                }
             }
         }
     }

@@ -18,7 +18,9 @@ enum TranslationPreferences {
             return provider
         }
         set {
-            let provider = newValue == .plamo && !PlamoSetupService.isSetupComplete ? .codex : newValue
+            let provider = newValue == .plamo && !PlamoSetupService.isSetupComplete
+                ? .codex
+                : newValue
             guard provider != translationProvider else { return }
             UserDefaults.standard.set(provider.rawValue, forKey: providerDefaultsKey)
             NotificationCenter.default.post(name: .translationProviderDidChange, object: provider)

@@ -67,6 +67,9 @@ struct ProviderSegmentedControl: View {
         if provider == .plamo, disabled, !isPlamoReady {
             return "Prepare PLaMo in Settings before selecting it"
         }
+        if provider == .openAICompatible {
+            return "Configure base_url, api_key, and model in Settings"
+        }
         return provider.description
     }
 }

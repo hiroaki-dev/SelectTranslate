@@ -1,6 +1,6 @@
 # CodexTranslator
 
-macOS utility app that translates selected text with `codex exec` or local PLaMo MLX and shows the source and translated text in a floating panel.
+macOS utility app that translates selected text with `codex exec`, local PLaMo MLX, or an OpenAI-compatible chat completions API, and shows the source and translated text in a floating panel.
 
 ## Requirements
 
@@ -38,7 +38,7 @@ Japanese text is translated to English. Text without Japanese characters is tran
 
 The app first reads selected text through Accessibility without touching the clipboard. If an app does not expose selected text through Accessibility, CodexTranslator preserves the current clipboard, sends `Command + C`, captures the selected text, and restores the previous clipboard immediately before translation starts.
 
-Use the `Engine` segmented control in the panel or `CodexTranslator` > `Settings...` to switch between `Codex` and `PLaMo`. PLaMo cannot be selected until `Prepare PLaMo` has completed in Settings. When a translation is already displayed, changing the engine reruns that same source text. The app saves the selected value.
+Use the `Engine` segmented control in the panel or `CodexTranslator` > `Settings...` to switch between `Codex`, `PLaMo`, and `API`. PLaMo cannot be selected until `Prepare PLaMo` has completed in Settings. When a translation is already displayed, changing the engine reruns that same source text. The app saves the selected value.
 
 Use the `Effort` segmented control in the panel to choose the Codex reasoning effort. It is shown only for the Codex engine. When a Codex translation is already displayed, changing the effort reruns that same source text. The app saves the selected value.
 
@@ -101,3 +101,19 @@ After setup, the app runs:
 ```
 
 PLaMo is a translation-specialized model and is not instruction-tuned for chat, so the app sends the selected text directly instead of the editable Codex prompt template.
+
+## OpenAI-compatible API
+
+The `API` engine calls an OpenAI-compatible chat completions endpoint:
+
+```sh
+POST {base_url}/chat/completions
+```
+
+Configure these values in `CodexTranslator` > `Settings...`:
+
+- `base_url`: include `/v1`, for example `http://localhost:1234/v1`
+- `api_key`: for example `dummy` for LM Studio or `ollama` for Ollama
+- `model`: the model name served by the local API
+
+The request uses a `system` message that asks for translation output only, and a `user` message containing the source text and target language. It uses `/chat/completions`, not `/completions`.

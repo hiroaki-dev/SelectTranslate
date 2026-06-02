@@ -140,7 +140,7 @@ final class CodexTranslationService {
             try FileManager.default.createDirectory(at: workspaceURL, withIntermediateDirectories: true)
 
             let outputURL = FileManager.default.temporaryDirectory
-                .appendingPathComponent("CodexTranslator-\(UUID().uuidString).txt")
+                .appendingPathComponent("SelectTranslate-\(UUID().uuidString).txt")
 
             defer {
                 try? FileManager.default.removeItem(at: outputURL)

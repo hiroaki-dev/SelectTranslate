@@ -1,7 +1,7 @@
 import AppKit
 
 @main
-struct CodexTranslatorMain {
+struct SelectTranslateMain {
     @MainActor
     static func main() {
         let app = NSApplication.shared

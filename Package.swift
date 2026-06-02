@@ -3,16 +3,16 @@
 import PackageDescription
 
 let package = Package(
-    name: "CodexTranslator",
+    name: "SelectTranslate",
     platforms: [
         .macOS(.v13)
     ],
     products: [
-        .executable(name: "CodexTranslator", targets: ["CodexTranslator"])
+        .executable(name: "SelectTranslate", targets: ["SelectTranslate"])
     ],
     targets: [
         .executableTarget(
-            name: "CodexTranslator",
+            name: "SelectTranslate",
             linkerSettings: [
                 .linkedFramework("AppKit"),
                 .linkedFramework("ApplicationServices"),

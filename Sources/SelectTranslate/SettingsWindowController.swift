@@ -26,7 +26,7 @@ final class SettingsWindowController {
             defer: false
         )
 
-        window.title = "Codex Translator Settings"
+        window.title = "SelectTranslate Settings"
         window.minSize = NSSize(width: 700, height: 620)
         window.isReleasedWhenClosed = false
         window.contentView = NSHostingView(

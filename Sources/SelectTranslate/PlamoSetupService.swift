@@ -1,7 +1,7 @@
 import Foundation
 
 extension Notification.Name {
-    static let plamoSetupStatusDidChange = Notification.Name("CodexTranslatorPlamoSetupStatusDidChange")
+    static let plamoSetupStatusDidChange = Notification.Name("SelectTranslatePlamoSetupStatusDidChange")
 }
 
 enum PlamoSetupError: LocalizedError {

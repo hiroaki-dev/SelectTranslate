@@ -1,10 +1,14 @@
 import Foundation
 
 enum AppPaths {
+    private static let applicationSupportDirectoryName = "SelectTranslate"
+    private static let legacyApplicationSupportDirectoryName = "CodexTranslator"
+
     static var applicationSupportURL: URL {
         let baseURL = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
             ?? FileManager.default.temporaryDirectory
-        let url = baseURL.appendingPathComponent("CodexTranslator", isDirectory: true)
+        let url = baseURL.appendingPathComponent(applicationSupportDirectoryName, isDirectory: true)
+        migrateLegacyApplicationSupportIfNeeded(from: baseURL, to: url)
         try? FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
         return url
     }
@@ -43,5 +47,17 @@ enum AppPaths {
         environment["HF_HOME"] = huggingFaceCacheURL.path
         environment["PIP_DISABLE_PIP_VERSION_CHECK"] = "1"
         return environment
+    }
+
+    private static func migrateLegacyApplicationSupportIfNeeded(from baseURL: URL, to newURL: URL) {
+        let legacyURL = baseURL.appendingPathComponent(legacyApplicationSupportDirectoryName, isDirectory: true)
+        let fileManager = FileManager.default
+
+        guard !fileManager.fileExists(atPath: newURL.path),
+              fileManager.fileExists(atPath: legacyURL.path) else {
+            return
+        }
+
+        try? fileManager.moveItem(at: legacyURL, to: newURL)
     }
 }

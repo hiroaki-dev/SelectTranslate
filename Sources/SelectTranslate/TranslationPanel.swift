@@ -9,7 +9,7 @@ final class TranslationPanelModel: ObservableObject {
     @Published var sourceText: String = ""
     @Published var translatedText: String = ""
     @Published var directionLabel: String = ""
-    @Published var title: String = "Codex Translate"
+    @Published var title: String = "SelectTranslate"
     @Published var message: String = ""
     @Published var backTranslatedText: String = ""
     @Published var backTranslationMessage: String = ""
@@ -199,11 +199,11 @@ final class TranslationPanelController {
         if isAccessibilityTrusted {
             model.translatedText = "Ready. Accessibility permission is enabled."
         } else {
-            model.translatedText = "Accessibility permission is not enabled yet. Use the Codex menu bar item and choose Open Accessibility Settings."
+            model.translatedText = "Accessibility permission is not enabled yet. Use the SelectTranslate menu bar item and choose Open Accessibility Settings."
         }
 
         model.directionLabel = "Control + F"
-        model.title = "Codex Translator is Running"
+        model.title = "SelectTranslate is Running"
         model.message = ""
         model.backTranslatedText = ""
         model.backTranslationMessage = ""
@@ -238,7 +238,7 @@ final class TranslationPanelController {
             defer: false
         )
 
-        panel.title = "Codex Translate"
+        panel.title = "SelectTranslate"
         panel.minSize = NSSize(width: 720, height: 360)
         panel.titlebarAppearsTransparent = true
         panel.isMovableByWindowBackground = true

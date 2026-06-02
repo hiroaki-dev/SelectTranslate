@@ -40,16 +40,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func configureApplicationMenu() {
         let mainMenu = NSMenu()
 
-        let appMenuItem = NSMenuItem(title: "CodexTranslator", action: nil, keyEquivalent: "")
+        let appMenuItem = NSMenuItem(title: "SelectTranslate", action: nil, keyEquivalent: "")
         let appMenu = NSMenu()
         appMenu.addItem(makeMenuItem(title: "Settings...", action: #selector(openSettings), keyEquivalent: ","))
         appMenu.addItem(.separator())
-        appMenu.addItem(NSMenuItem(title: "Hide CodexTranslator", action: #selector(NSApplication.hide(_:)), keyEquivalent: "h"))
+        appMenu.addItem(NSMenuItem(title: "Hide SelectTranslate", action: #selector(NSApplication.hide(_:)), keyEquivalent: "h"))
         appMenu.addItem(NSMenuItem(title: "Hide Others", action: #selector(NSApplication.hideOtherApplications(_:)), keyEquivalent: "h"))
         appMenu.items.last?.keyEquivalentModifierMask = [.command, .option]
         appMenu.addItem(NSMenuItem(title: "Show All", action: #selector(NSApplication.unhideAllApplications(_:)), keyEquivalent: ""))
         appMenu.addItem(.separator())
-        appMenu.addItem(makeMenuItem(title: "Quit CodexTranslator", action: #selector(quit), keyEquivalent: "q"))
+        appMenu.addItem(makeMenuItem(title: "Quit SelectTranslate", action: #selector(quit), keyEquivalent: "q"))
         appMenuItem.submenu = appMenu
         mainMenu.addItem(appMenuItem)
 
@@ -77,8 +77,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func configureStatusItem() {
         let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
-        item.button?.title = "Codex"
-        item.button?.toolTip = "Codex Translator"
+        item.button?.title = "Select"
+        item.button?.toolTip = "SelectTranslate"
 
         let menu = NSMenu()
         menu.addItem(makeMenuItem(title: "Translate Selection", action: #selector(translateSelectionFromMenu)))
@@ -226,7 +226,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             panelController.showError(
                 source: nil,
                 title: "Accessibility Permission Required",
-                message: "Allow CodexTranslator in System Settings > Privacy & Security > Accessibility. The translation will retry automatically after permission is enabled."
+                message: "Allow SelectTranslate in System Settings > Privacy & Security > Accessibility. The translation will retry automatically after permission is enabled."
             )
         } catch SelectionReaderError.noSelectedText {
             currentTranslationRequest = nil

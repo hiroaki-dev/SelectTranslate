@@ -1,7 +1,7 @@
 #!/bin/sh
 set -eu
 
-APP_SUPPORT="$HOME/Library/Application Support/CodexTranslator"
+APP_SUPPORT="$HOME/Library/Application Support/SelectTranslate"
 VENV="$APP_SUPPORT/PLaMoEnvironment"
 HF_HOME="$APP_SUPPORT/HuggingFace"
 

@@ -1,7 +1,7 @@
 import Foundation
 
 extension Notification.Name {
-    static let translationProviderDidChange = Notification.Name("CodexTranslatorTranslationProviderDidChange")
+    static let translationProviderDidChange = Notification.Name("SelectTranslateTranslationProviderDidChange")
 }
 
 enum TranslationPreferences {

@@ -1,4 +1,4 @@
-# CodexTranslator
+# SelectTranslate
 
 macOS utility app that translates selected text with `codex exec`, local PLaMo MLX, or an OpenAI-compatible chat completions API, and shows the source and translated text in a floating panel.
 
@@ -13,15 +13,15 @@ macOS utility app that translates selected text with `codex exec`, local PLaMo M
 
 ```sh
 ./scripts/build-app.sh
-open build/CodexTranslator.app
+open build/SelectTranslate.app
 ```
 
-This launches CodexTranslator as a regular macOS app with a Dock icon and normal application menu.
+This launches SelectTranslate as a regular macOS app with a Dock icon and normal application menu.
 
 ## Local run
 
 ```sh
-swift run CodexTranslator
+swift run SelectTranslate
 ```
 
 `swift run` is useful during development, but it runs the executable directly from Terminal. Use the `.app` flow above for normal app behavior.
@@ -36,15 +36,15 @@ The translation window is resizable.
 
 Japanese text is translated to English. Text without Japanese characters is translated to Japanese.
 
-The app first reads selected text through Accessibility without touching the clipboard. If an app does not expose selected text through Accessibility, CodexTranslator preserves the current clipboard, sends `Command + C`, captures the selected text, and restores the previous clipboard immediately before translation starts.
+The app first reads selected text through Accessibility without touching the clipboard. If an app does not expose selected text through Accessibility, SelectTranslate preserves the current clipboard, sends `Command + C`, captures the selected text, and restores the previous clipboard immediately before translation starts.
 
-Use the `Engine` segmented control in the panel or `CodexTranslator` > `Settings...` to switch between `Codex`, `PLaMo`, and `API`. PLaMo cannot be selected until `Prepare PLaMo` has completed in Settings. When a translation is already displayed, changing the engine reruns that same source text. The app saves the selected value.
+Use the `Engine` segmented control in the panel or `SelectTranslate` > `Settings...` to switch between `Codex`, `PLaMo`, and `API`. PLaMo cannot be selected until `Prepare PLaMo` has completed in Settings. When a translation is already displayed, changing the engine reruns that same source text. The app saves the selected value.
 
 Use the `Effort` segmented control in the panel to choose the Codex reasoning effort. It is shown only for the Codex engine. When a Codex translation is already displayed, changing the effort reruns that same source text. The app saves the selected value.
 
 Use the retranslation button in the `Translation` header to translate the current translation back to the original language. The back translation appears at the bottom of the `Translation` area.
 
-Use `Codex` > `Settings...` to edit the prompt template. The template supports `{{instruction}}` for the current translation direction and `{{text}}` for the selected text.
+Use `SelectTranslate` > `Settings...` to edit the prompt template. The template supports `{{instruction}}` for the current translation direction and `{{text}}` for the selected text.
 
 ## Permissions
 
@@ -52,13 +52,13 @@ macOS Accessibility permission is required so the app can read selected text fro
 
 If the shortcut shows a permission error:
 
-1. Press `Control + F`; if permission is missing, CodexTranslator asks macOS to show the Accessibility prompt.
-2. Approve the macOS prompt, or enable `CodexTranslator` in the Accessibility list.
-3. CodexTranslator retries the pending translation automatically after permission is enabled.
+1. Press `Control + F`; if permission is missing, SelectTranslate asks macOS to show the Accessibility prompt.
+2. Approve the macOS prompt, or enable `SelectTranslate` in the Accessibility list.
+3. SelectTranslate retries the pending translation automatically after permission is enabled.
 
-CodexTranslator requests the permission prompt each time `Control + F` is pressed without Accessibility permission. Use `CodexTranslator` > `Actions` > `Open Accessibility Settings` to request it again or open the settings page manually.
+SelectTranslate requests the permission prompt each time `Control + F` is pressed without Accessibility permission. Use `SelectTranslate` > `Actions` > `Open Accessibility Settings` to request it again or open the settings page manually.
 
-`swift run CodexTranslator` and `open build/CodexTranslator.app` are treated as different apps by macOS privacy permissions. Grant permission to the `.app` version when using the normal launch flow.
+`swift run SelectTranslate` and `open build/SelectTranslate.app` are treated as different apps by macOS privacy permissions. Grant permission to the `.app` version when using the normal launch flow.
 
 ## Codex command
 
@@ -68,7 +68,7 @@ The app runs Codex with:
 codex exec --ignore-user-config --skip-git-repo-check --cd <application-support-workspace> --output-last-message <temp-file> -
 ```
 
-`--ignore-user-config` prevents Codex from reading project entries in `~/.codex/config.toml`, including entries under protected folders such as Downloads. `--cd` is fixed to CodexTranslator's Application Support workspace so the app does not use the current Terminal or Finder directory. `--skip-git-repo-check` avoids the trusted-directory error in that translation-only workspace.
+`--ignore-user-config` prevents Codex from reading project entries in `~/.codex/config.toml`, including entries under protected folders such as Downloads. `--cd` is fixed to SelectTranslate's Application Support workspace so the app does not use the current Terminal or Finder directory. `--skip-git-repo-check` avoids the trusted-directory error in that translation-only workspace.
 
 The selected panel effort is passed as:
 
@@ -82,11 +82,13 @@ The saved prompt template is rendered and sent to `codex exec` over stdin.
 
 The PLaMo engine uses [`mlx-community/plamo-2-translate`](https://huggingface.co/mlx-community/plamo-2-translate), a 4-bit quantized PLaMo Translation Model for MLX on Apple Silicon. Review the model card and PLaMo community license before use.
 
-Run `Prepare PLaMo` in Settings before selecting the PLaMo engine. CodexTranslator creates an app-local Python environment, installs `mlx-lm`, `numba`, and `torch`, and downloads the model. Settings shows the active setup step and live command output, including download progress reported by the underlying tools. The files are stored under:
+Run `Prepare PLaMo` in Settings before selecting the PLaMo engine. SelectTranslate creates an app-local Python environment, installs `mlx-lm`, `numba`, and `torch`, and downloads the model. Settings shows the active setup step and live command output, including download progress reported by the underlying tools. The files are stored under:
 
 ```sh
-~/Library/Application Support/CodexTranslator/
+~/Library/Application Support/SelectTranslate/
 ```
+
+When upgrading from the old CodexTranslator name, the app moves the existing `~/Library/Application Support/CodexTranslator/` directory to `~/Library/Application Support/SelectTranslate/` if the new directory does not already exist.
 
 For manual setup, you can run:
 
@@ -97,7 +99,7 @@ For manual setup, you can run:
 After setup, the app runs:
 
 ```sh
-~/Library/Application\ Support/CodexTranslator/PLaMoEnvironment/bin/python3 -m mlx_lm generate --model mlx-community/plamo-2-translate --trust-remote-code --extra-eos-token '<|plamo:op|>' --prompt '<selected text>'
+~/Library/Application\ Support/SelectTranslate/PLaMoEnvironment/bin/python3 -m mlx_lm generate --model mlx-community/plamo-2-translate --trust-remote-code --extra-eos-token '<|plamo:op|>' --prompt '<selected text>'
 ```
 
 PLaMo is a translation-specialized model and is not instruction-tuned for chat, so the app sends the selected text directly instead of the editable Codex prompt template.
@@ -110,7 +112,7 @@ The `API` engine calls an OpenAI-compatible chat completions endpoint:
 POST {base_url}/chat/completions
 ```
 
-Configure these values in `CodexTranslator` > `Settings...`:
+Configure these values in `SelectTranslate` > `Settings...`:
 
 - `base_url`: include `/v1`, for example `http://localhost:1234/v1`
 - `api_key`: optional; leave it blank for local servers that do not require authentication

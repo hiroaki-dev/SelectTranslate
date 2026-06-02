@@ -308,6 +308,16 @@ private struct SettingsView: View {
                 .foregroundStyle(model.isPlamoStatusError ? .red : .secondary)
                 .fixedSize(horizontal: false, vertical: true)
 
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Built with PLaMo")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(.secondary)
+                Text("PLaMo is governed by the PLaMo community license. Review the model license before downloading or using it, especially for commercial use.")
+                    .font(.system(size: 12))
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
             if !model.plamoStatusLog.isEmpty {
                 ScrollView {
                     Text(model.plamoStatusLog)

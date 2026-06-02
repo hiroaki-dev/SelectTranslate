@@ -82,6 +82,10 @@ The saved prompt template is rendered and sent to `codex exec` over stdin.
 
 The PLaMo engine uses [`mlx-community/plamo-2-translate`](https://huggingface.co/mlx-community/plamo-2-translate), a 4-bit quantized PLaMo Translation Model for MLX on Apple Silicon. Review the model card and PLaMo community license before use.
 
+Built with PLaMo.
+
+The PLaMo model is not bundled with this repository or the app bundle created by `./scripts/build-app.sh`. When you run `Prepare PLaMo`, the app downloads the model into your local Application Support directory. The PLaMo model is governed by the PLaMo community license, not by SelectTranslate's MIT license. Commercial use may require additional steps described by Preferred Networks.
+
 Run `Prepare PLaMo` in Settings before selecting the PLaMo engine. SelectTranslate creates an app-local Python environment, installs `mlx-lm`, `numba`, and `torch`, and downloads the model. Settings shows the active setup step and live command output, including download progress reported by the underlying tools. The files are stored under:
 
 ```sh
@@ -119,3 +123,11 @@ Configure these values in `SelectTranslate` > `Settings...`:
 - `model`: the model name served by the local API
 
 The request uses a `system` message that asks for translation output only, and a `user` message containing the source text and target language. It uses `/chat/completions`, not `/completions`.
+
+## License
+
+SelectTranslate is released under the MIT License. See [LICENSE](LICENSE).
+
+Third-party tools, Python packages, and models are governed by their own licenses and terms. See [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+
+The source repository and the app bundle produced by `./scripts/build-app.sh` do not vendor the PLaMo model, Python environment, Python wheels, or Codex CLI. If you distribute a packaged app that bundles any of those components, include the corresponding license texts and notices for the bundled versions.

@@ -84,7 +84,7 @@ The PLaMo engine uses [`mlx-community/plamo-2-translate`](https://huggingface.co
 
 Built with PLaMo.
 
-The PLaMo model is not bundled with this repository or the app bundle created by `./scripts/build-app.sh`. When you run `Prepare PLaMo`, the app downloads the model into your local Application Support directory. The PLaMo model is governed by the PLaMo community license, not by SelectTranslate's MIT license. Commercial use may require additional steps described by Preferred Networks.
+The PLaMo model is not bundled with this repository or the app bundle created by `./scripts/build-app.sh`. When you run `Prepare PLaMo`, the app downloads the model into your local Application Support directory. The PLaMo model is governed by the PLaMo community license, not by SelectTranslate's Apache License 2.0. Commercial use may require additional steps described by Preferred Networks.
 
 Run `Prepare PLaMo` in Settings before selecting the PLaMo engine. SelectTranslate creates an app-local Python environment, installs `mlx-lm`, `numba`, and `torch`, and downloads the model. Settings shows the active setup step and live command output, including download progress reported by the underlying tools. The files are stored under:
 
@@ -126,7 +126,7 @@ The request uses a `system` message that asks for translation output only, and a
 
 ## License
 
-SelectTranslate is released under the MIT License. See [LICENSE](LICENSE).
+SelectTranslate is released under the Apache License 2.0. See [LICENSE](LICENSE).
 
 Third-party tools, Python packages, and models are governed by their own licenses and terms. See [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
 

@@ -30,7 +30,7 @@ Built with PLaMo.
 
 The PLaMo engine downloads and runs `mlx-community/plamo-2-translate` from
 Hugging Face. The model is released under the PLaMo community license, not under
-SelectTranslate's MIT license. Users must review and comply with the PLaMo
+SelectTranslate's Apache License 2.0. Users must review and comply with the PLaMo
 community license before downloading or using the model.
 
 Commercial use of the PLaMo model may require additional steps described by

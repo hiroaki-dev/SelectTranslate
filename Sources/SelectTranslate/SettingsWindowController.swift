@@ -20,14 +20,14 @@ final class SettingsWindowController {
     private func makeWindow() -> NSWindow {
         let model = SettingsModel()
         let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 820, height: 760),
+            contentRect: NSRect(x: 0, y: 0, width: 920, height: 820),
             styleMask: [.titled, .closable, .resizable],
             backing: .buffered,
             defer: false
         )
 
         window.title = "SelectTranslate Settings"
-        window.minSize = NSSize(width: 700, height: 620)
+        window.minSize = NSSize(width: 760, height: 680)
         window.isReleasedWhenClosed = false
         window.contentView = NSHostingView(
             rootView: SettingsView(model: model) { [weak window] in
@@ -44,11 +44,9 @@ private final class SettingsModel: ObservableObject {
     private var providerObserver: NSObjectProtocol?
     private var plamoSetupObserver: NSObjectProtocol?
 
-    @Published var promptTemplate: String {
-        didSet {
-            PromptSettings.template = promptTemplate
-        }
-    }
+    @Published private(set) var shortcutProfiles: [ShortcutProfile]
+    @Published var selectedShortcutID: String
+    @Published var shortcutValidationMessage: String = ""
     @Published var translationProvider: TranslationProvider
     @Published var apiBaseURL: String {
         didSet {
@@ -73,8 +71,18 @@ private final class SettingsModel: ObservableObject {
     @Published var isPlamoStatusError: Bool = false
     private var plamoLogLines: [String] = []
 
+    var selectedShortcutProfile: ShortcutProfile? {
+        shortcutProfiles.first { $0.id == selectedShortcutID }
+    }
+
+    var canDeleteSelectedShortcut: Bool {
+        shortcutProfiles.count > 1 && selectedShortcutProfile != nil
+    }
+
     init() {
-        promptTemplate = PromptSettings.template
+        let loadedProfiles = PromptSettings.shortcutProfiles
+        shortcutProfiles = loadedProfiles
+        selectedShortcutID = loadedProfiles.first?.id ?? ShortcutProfile.defaultProfile().id
         apiBaseURL = OpenAICompatibleSettings.baseURL
         apiKey = OpenAICompatibleSettings.apiKey
         apiModel = OpenAICompatibleSettings.model
@@ -115,9 +123,65 @@ private final class SettingsModel: ObservableObject {
         }
     }
 
-    func reset() {
-        PromptSettings.resetTemplate()
-        promptTemplate = PromptSettings.defaultTemplate
+    func selectShortcut(_ id: String) {
+        selectedShortcutID = id
+    }
+
+    func addShortcut() {
+        let profile = KeyboardShortcut.nextAvailableProfile(existingProfiles: shortcutProfiles)
+        var profiles = shortcutProfiles
+        profiles.append(profile)
+        shortcutProfiles = profiles
+        selectedShortcutID = profile.id
+        persistShortcutProfilesIfValid()
+    }
+
+    func deleteSelectedShortcut() {
+        guard canDeleteSelectedShortcut else { return }
+        var profiles = shortcutProfiles
+        profiles.removeAll { $0.id == selectedShortcutID }
+        shortcutProfiles = profiles
+        selectedShortcutID = shortcutProfiles.first?.id ?? ""
+        persistShortcutProfilesIfValid()
+    }
+
+    func resetSelectedPrompt() {
+        updateSelectedShortcut { profile in
+            profile.promptTemplate = PromptSettings.defaultTemplate
+        }
+    }
+
+    func updateSelectedShortcutName(_ name: String) {
+        updateSelectedShortcut { profile in
+            profile.name = name
+        }
+    }
+
+    func updateSelectedShortcutKeyCode(_ keyCode: UInt32) {
+        updateSelectedShortcut { profile in
+            profile.keyCode = keyCode
+        }
+    }
+
+    func setSelectedModifier(_ modifier: KeyboardShortcutModifier, enabled: Bool) {
+        updateSelectedShortcut { profile in
+            if enabled {
+                profile.modifiers |= modifier.mask
+            } else {
+                profile.modifiers &= ~modifier.mask
+            }
+        }
+    }
+
+    func isSelectedModifierEnabled(_ modifier: KeyboardShortcutModifier) -> Bool {
+        guard let profile = selectedShortcutProfile else { return false }
+        return profile.shortcut.normalizedModifiers & modifier.mask != 0
+    }
+
+    func updateSelectedShortcutPrompt(_ prompt: String) {
+        updateSelectedShortcut { profile in
+            profile.promptTemplate = prompt
+        }
     }
 
     func selectProvider(_ provider: TranslationProvider) {
@@ -188,6 +252,24 @@ private final class SettingsModel: ObservableObject {
         }
     }
 
+    private func updateSelectedShortcut(_ update: (inout ShortcutProfile) -> Void) {
+        var profiles = shortcutProfiles
+        guard let index = profiles.firstIndex(where: { $0.id == selectedShortcutID }) else { return }
+        update(&profiles[index])
+        shortcutProfiles = profiles
+        persistShortcutProfilesIfValid()
+    }
+
+    private func persistShortcutProfilesIfValid() {
+        let messages = PromptSettings.validationMessages(for: shortcutProfiles)
+        if messages.isEmpty {
+            shortcutValidationMessage = ""
+            PromptSettings.saveShortcutProfiles(shortcutProfiles)
+        } else {
+            shortcutValidationMessage = "\(messages.joined(separator: "\n"))\nChanges are not saved until shortcut conflicts are fixed."
+        }
+    }
+
     private func refreshPlamoReadiness() {
         isPlamoReady = PlamoSetupService.isSetupComplete
         if !isPlamoReady, translationProvider == .plamo {
@@ -228,26 +310,7 @@ private struct SettingsView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
-            HStack {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("Prompt")
-                        .font(.system(size: 18, weight: .semibold))
-                    Text("\(PromptSettings.instructionToken) and \(PromptSettings.textToken)")
-                        .font(.system(size: 12))
-                        .foregroundStyle(.secondary)
-                }
-
-                Spacer()
-
-                Button("Reset") {
-                    model.reset()
-                }
-                .help("Restore the default prompt")
-
-                Button("Done", action: close)
-                    .keyboardShortcut(.defaultAction)
-            }
-
+            header
             modelSection
 
             if model.translationProvider == .openAICompatible {
@@ -255,23 +318,27 @@ private struct SettingsView: View {
             }
 
             Divider()
-
-            TextEditor(text: $model.promptTemplate)
-                .font(.system(size: 13, design: .monospaced))
-                .scrollContentBackground(.hidden)
-                .padding(8)
-                .background(
-                    RoundedRectangle(cornerRadius: 8)
-                        .fill(Color(nsColor: .textBackgroundColor))
-                )
-                .overlay(
-                    RoundedRectangle(cornerRadius: 8)
-                        .stroke(Color(nsColor: .separatorColor), lineWidth: 1)
-                )
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            shortcutsSection
         }
         .padding(20)
-        .frame(minWidth: 640, minHeight: 520)
+        .frame(minWidth: 700, minHeight: 620)
+    }
+
+    private var header: some View {
+        HStack {
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Shortcuts")
+                    .font(.system(size: 18, weight: .semibold))
+                Text("Each shortcut can use a different prompt template. \(PromptSettings.instructionToken) and \(PromptSettings.textToken) are supported.")
+                    .font(.system(size: 12))
+                    .foregroundStyle(.secondary)
+            }
+
+            Spacer()
+
+            Button("Done", action: close)
+                .keyboardShortcut(.defaultAction)
+        }
     }
 
     private var modelSection: some View {
@@ -312,7 +379,7 @@ private struct SettingsView: View {
                 Text("Built with PLaMo")
                     .font(.system(size: 12, weight: .semibold))
                     .foregroundStyle(.secondary)
-                Text("PLaMo is governed by the PLaMo community license. Review the model license before downloading or using it, especially for commercial use.")
+                Text("PLaMo is governed by the PLaMo community license. PLaMo ignores shortcut prompt templates and uses the selected text directly.")
                     .font(.system(size: 12))
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -338,6 +405,197 @@ private struct SettingsView: View {
                 )
             }
         }
+    }
+
+    private var shortcutsSection: some View {
+        HStack(alignment: .top, spacing: 14) {
+            shortcutList
+            Divider()
+            shortcutEditor
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    private var shortcutList: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Text("Shortcut Sets")
+                    .font(.system(size: 14, weight: .semibold))
+                Spacer()
+                Button {
+                    model.addShortcut()
+                } label: {
+                    Image(systemName: "plus")
+                        .frame(width: 22, height: 22)
+                }
+                .buttonStyle(.plain)
+                .help("Add shortcut")
+
+                Button {
+                    model.deleteSelectedShortcut()
+                } label: {
+                    Image(systemName: "trash")
+                        .frame(width: 22, height: 22)
+                }
+                .buttonStyle(.plain)
+                .disabled(!model.canDeleteSelectedShortcut)
+                .help("Delete selected shortcut")
+            }
+
+            ScrollView {
+                VStack(alignment: .leading, spacing: 6) {
+                    ForEach(model.shortcutProfiles) { profile in
+                        Button {
+                            model.selectShortcut(profile.id)
+                        } label: {
+                            HStack(alignment: .center, spacing: 8) {
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(profile.displayName)
+                                        .font(.system(size: 13, weight: .semibold))
+                                        .lineLimit(1)
+                                    Text(profile.shortcutLabel)
+                                        .font(.system(size: 12))
+                                        .foregroundStyle(.secondary)
+                                        .lineLimit(1)
+                                }
+                                Spacer()
+                                if model.selectedShortcutID == profile.id {
+                                    Image(systemName: "checkmark")
+                                        .font(.system(size: 11, weight: .semibold))
+                                }
+                            }
+                            .padding(8)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .background(
+                                RoundedRectangle(cornerRadius: 8)
+                                    .fill(model.selectedShortcutID == profile.id ? Color.accentColor.opacity(0.18) : Color.clear)
+                            )
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+            }
+        }
+        .frame(width: 230)
+    }
+
+    private var shortcutEditor: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            if model.selectedShortcutProfile != nil {
+                shortcutFields
+            } else {
+                Text("Select a shortcut set or add a new one.")
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+    }
+
+    private var shortcutFields: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Grid(alignment: .leadingFirstTextBaseline, horizontalSpacing: 12, verticalSpacing: 8) {
+                GridRow {
+                    Text("Name")
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundStyle(.secondary)
+                        .frame(width: 72, alignment: .leading)
+                    TextField(
+                        "Shortcut name",
+                        text: Binding(
+                            get: { model.selectedShortcutProfile?.name ?? "" },
+                            set: { model.updateSelectedShortcutName($0) }
+                        )
+                    )
+                    .textFieldStyle(.roundedBorder)
+                }
+
+                GridRow {
+                    Text("Key")
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundStyle(.secondary)
+                        .frame(width: 72, alignment: .leading)
+                    Picker(
+                        "",
+                        selection: Binding(
+                            get: { model.selectedShortcutProfile?.keyCode ?? KeyboardShortcut.defaultKeyCode },
+                            set: { model.updateSelectedShortcutKeyCode($0) }
+                        )
+                    ) {
+                        ForEach(KeyboardShortcut.keyOptions) { option in
+                            Text(option.label).tag(option.keyCode)
+                        }
+                    }
+                    .labelsHidden()
+                    .frame(width: 160)
+                }
+            }
+
+            HStack(spacing: 12) {
+                Text("Modifiers")
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(.secondary)
+                    .frame(width: 72, alignment: .leading)
+
+                ForEach(KeyboardShortcutModifier.allCases) { modifier in
+                    Toggle(
+                        modifier.label,
+                        isOn: Binding(
+                            get: { model.isSelectedModifierEnabled(modifier) },
+                            set: { model.setSelectedModifier(modifier, enabled: $0) }
+                        )
+                    )
+                    .toggleStyle(.checkbox)
+                }
+            }
+
+            if let profile = model.selectedShortcutProfile {
+                Text("Current: \(profile.shortcutLabel)")
+                    .font(.system(size: 12))
+                    .foregroundStyle(.secondary)
+            }
+
+            if !model.shortcutValidationMessage.isEmpty {
+                Text(model.shortcutValidationMessage)
+                    .font(.system(size: 12))
+                    .foregroundStyle(.red)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            HStack {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Prompt")
+                        .font(.system(size: 14, weight: .semibold))
+                    Text("Used by Codex and API. PLaMo ignores shortcut prompt templates.")
+                        .font(.system(size: 12))
+                        .foregroundStyle(.secondary)
+                }
+                Spacer()
+                Button("Reset Prompt") {
+                    model.resetSelectedPrompt()
+                }
+                .help("Restore the default prompt for the selected shortcut")
+            }
+
+            TextEditor(
+                text: Binding(
+                    get: { model.selectedShortcutProfile?.promptTemplate ?? "" },
+                    set: { model.updateSelectedShortcutPrompt($0) }
+                )
+            )
+            .font(.system(size: 13, design: .monospaced))
+            .scrollContentBackground(.hidden)
+            .padding(8)
+            .background(
+                RoundedRectangle(cornerRadius: 8)
+                    .fill(Color(nsColor: .textBackgroundColor))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 8)
+                    .stroke(Color(nsColor: .separatorColor), lineWidth: 1)
+            )
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     }
 
     private var apiSection: some View {

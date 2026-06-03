@@ -8,7 +8,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let panelController = TranslationPanelController()
     private let settingsWindowController = SettingsWindowController()
 
-    private var hotKeyManager: HotKeyManager?
+    private var hotKeyManagers: [HotKeyManager] = []
+    private var shortcutProfilesObserver: NSObjectProtocol?
     private var statusItem: NSStatusItem?
     private var translationTask: Task<Void, Never>?
     private var accessibilityRetryTask: Task<Void, Never>?
@@ -28,13 +29,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         configureApplicationMenu()
         configureStatusItem()
-        registerHotKey()
+        observeShortcutProfileChanges()
+        registerHotKeys()
         panelController.showReady(isAccessibilityTrusted: selectionReader.isAccessibilityTrusted)
     }
 
     func applicationWillTerminate(_ notification: Notification) {
         accessibilityRetryTask?.cancel()
-        hotKeyManager?.unregister()
+        unregisterHotKeys()
+        if let shortcutProfilesObserver {
+            NotificationCenter.default.removeObserver(shortcutProfilesObserver)
+        }
     }
 
     private func configureApplicationMenu() {
@@ -97,26 +102,60 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         return item
     }
 
-    private func registerHotKey() {
-        do {
-            let manager = HotKeyManager(keyCode: UInt32(kVK_ANSI_F), modifiers: UInt32(controlKey)) { [weak self] in
+    private func observeShortcutProfileChanges() {
+        shortcutProfilesObserver = NotificationCenter.default.addObserver(
+            forName: .shortcutProfilesDidChange,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor in
+                self?.registerHotKeys()
+            }
+        }
+    }
+
+    private func registerHotKeys() {
+        unregisterHotKeys()
+
+        let profiles = PromptSettings.shortcutProfiles
+        var registrationErrors: [String] = []
+
+        for (index, profile) in profiles.enumerated() {
+            let manager = HotKeyManager(
+                id: UInt32(index + 1),
+                keyCode: profile.keyCode,
+                modifiers: profile.modifiers
+            ) { [weak self, profileID = profile.id] in
                 Task { @MainActor in
-                    self?.startTranslation()
+                    let latestProfile = PromptSettings.profile(withID: profileID) ?? profile
+                    self?.startTranslation(shortcutProfile: latestProfile)
                 }
             }
-            try manager.register()
-            hotKeyManager = manager
-        } catch {
+
+            do {
+                try manager.register()
+                hotKeyManagers.append(manager)
+            } catch {
+                registrationErrors.append("\(profile.displayName) (\(profile.shortcutLabel)): \(error.localizedDescription)")
+            }
+        }
+
+        if !registrationErrors.isEmpty {
             panelController.showError(
                 source: nil,
                 title: "Shortcut Error",
-                message: "Control + F could not be registered: \(error.localizedDescription)"
+                message: registrationErrors.joined(separator: "\n")
             )
         }
     }
 
+    private func unregisterHotKeys() {
+        hotKeyManagers.forEach { $0.unregister() }
+        hotKeyManagers.removeAll()
+    }
+
     @objc private func translateSelectionFromMenu() {
-        startTranslation()
+        startTranslation(shortcutProfile: PromptSettings.defaultShortcutProfile)
     }
 
     @objc private func openSettings() {
@@ -135,6 +174,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func startTranslation(
+        shortcutProfile: ShortcutProfile,
         cancelPendingAccessibilityRetry: Bool = true,
         preferredProcessIdentifier: pid_t? = nil,
         isAccessibilityRetry: Bool = false
@@ -160,7 +200,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             defer { self.translationTask = nil }
             await self.translateCurrentSelection(
                 preferredProcessIdentifier: processIdentifier,
-                isAccessibilityRetry: isAccessibilityRetry
+                isAccessibilityRetry: isAccessibilityRetry,
+                shortcutProfile: shortcutProfile
             )
         }
     }
@@ -203,14 +244,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func translateCurrentSelection(
         preferredProcessIdentifier: pid_t?,
-        isAccessibilityRetry: Bool
+        isAccessibilityRetry: Bool,
+        shortcutProfile: ShortcutProfile
     ) async {
         do {
             let sourceText = try await selectionReader.readSelectedText(
                 preferredProcessIdentifier: preferredProcessIdentifier
             )
             let direction = TranslationDirection.detect(sourceText)
-            let request = TranslationRequest(sourceText: sourceText, direction: direction)
+            let request = TranslationRequest(sourceText: sourceText, direction: direction, shortcutProfile: shortcutProfile)
             currentTranslationRequest = request
 
             await translate(
@@ -222,7 +264,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             currentTranslationRequest = nil
             currentTranslationResult = nil
             requestAccessibilityPermissionFromShortcutIfNeeded()
-            scheduleAccessibilityRetryAfterGrant(preferredProcessIdentifier: preferredProcessIdentifier)
+            scheduleAccessibilityRetryAfterGrant(
+                preferredProcessIdentifier: preferredProcessIdentifier,
+                shortcutProfile: shortcutProfile
+            )
             panelController.showError(
                 source: nil,
                 title: "Accessibility Permission Required",
@@ -235,13 +280,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 panelController.showError(
                     source: nil,
                     title: "Selected Text Unavailable",
-                    message: "Accessibility permission is enabled, but the original selection is no longer available. Return to the app, select text, and press Control + F again."
+                    message: "Accessibility permission is enabled, but the original selection is no longer available. Return to the app, select text, and press \(shortcutProfile.shortcutLabel) again."
                 )
             } else {
                 panelController.showError(
                     source: nil,
                     title: "No Selected Text",
-                    message: "Select text before pressing Control + F. Some apps do not expose selected text through Accessibility."
+                    message: "Select text before pressing \(shortcutProfile.shortcutLabel). Some apps do not expose selected text through Accessibility."
                 )
             }
         } catch {
@@ -261,7 +306,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         selectionReader.requestAccessibilityPermissionPromptIfNeeded()
     }
 
-    private func scheduleAccessibilityRetryAfterGrant(preferredProcessIdentifier: pid_t?) {
+    private func scheduleAccessibilityRetryAfterGrant(preferredProcessIdentifier: pid_t?, shortcutProfile: ShortcutProfile) {
         accessibilityRetryTask?.cancel()
         accessibilityRetryTask = Task { [weak self] in
             while !Task.isCancelled {
@@ -278,6 +323,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     guard let self else { return }
                     self.accessibilityRetryTask = nil
                     self.startTranslation(
+                        shortcutProfile: shortcutProfile,
                         cancelPendingAccessibilityRetry: false,
                         preferredProcessIdentifier: preferredProcessIdentifier,
                         isAccessibilityRetry: true
@@ -305,23 +351,31 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func translate(request: TranslationRequest, effort: ReasoningEffort, provider: TranslationProvider) async {
         do {
             currentTranslationResult = nil
-            panelController.showLoading(source: request.sourceText, direction: request.direction, provider: provider)
+            panelController.showLoading(
+                source: request.sourceText,
+                direction: request.direction,
+                provider: provider,
+                shortcutProfile: request.shortcutProfile
+            )
             let translatedText = try await translator.translate(
                 request.sourceText,
                 direction: request.direction,
                 effort: effort,
-                provider: provider
+                provider: provider,
+                promptTemplate: request.shortcutProfile.normalizedPromptTemplate
             )
             currentTranslationResult = TranslationResult(
                 sourceText: request.sourceText,
                 direction: request.direction,
-                translatedText: translatedText
+                translatedText: translatedText,
+                shortcutProfile: request.shortcutProfile
             )
             panelController.showResult(
                 source: request.sourceText,
                 translation: translatedText,
                 direction: request.direction,
-                provider: provider
+                provider: provider,
+                shortcutProfile: request.shortcutProfile
             )
         } catch {
             panelController.showError(
@@ -339,7 +393,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 result.translatedText,
                 direction: result.direction.reversed,
                 effort: effort,
-                provider: provider
+                provider: provider,
+                promptTemplate: result.shortcutProfile.normalizedPromptTemplate
             )
             panelController.showBackTranslationResult(backTranslatedText)
         } catch {
@@ -367,10 +422,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 private struct TranslationRequest {
     let sourceText: String
     let direction: TranslationDirection
+    let shortcutProfile: ShortcutProfile
 }
 
 private struct TranslationResult {
     let sourceText: String
     let direction: TranslationDirection
     let translatedText: String
+    let shortcutProfile: ShortcutProfile
 }

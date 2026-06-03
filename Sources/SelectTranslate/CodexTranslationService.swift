@@ -118,24 +118,25 @@ final class CodexTranslationService {
         _ text: String,
         direction: TranslationDirection,
         effort: ReasoningEffort,
-        provider: TranslationProvider
+        provider: TranslationProvider,
+        promptTemplate: String
     ) async throws -> String {
         switch provider {
         case .codex:
-            return try await translateWithCodex(text, direction: direction, effort: effort)
+            return try await translateWithCodex(text, direction: direction, effort: effort, promptTemplate: promptTemplate)
         case .plamo:
             return try await translateWithPlamo(text)
         case .openAICompatible:
-            return try await translateWithOpenAICompatibleAPI(text, direction: direction)
+            return try await translateWithOpenAICompatibleAPI(text, direction: direction, promptTemplate: promptTemplate)
         }
     }
 
     private func translateWithCodex(
         _ text: String,
         direction: TranslationDirection,
-        effort: ReasoningEffort
+        effort: ReasoningEffort,
+        promptTemplate: String
     ) async throws -> String {
-        let promptTemplate = PromptSettings.template
         return try await Task.detached(priority: .userInitiated) { [workspaceURL, effort, promptTemplate] in
             try FileManager.default.createDirectory(at: workspaceURL, withIntermediateDirectories: true)
 
@@ -290,7 +291,11 @@ final class CodexTranslationService {
         }.value
     }
 
-    private func translateWithOpenAICompatibleAPI(_ text: String, direction: TranslationDirection) async throws -> String {
+    private func translateWithOpenAICompatibleAPI(
+        _ text: String,
+        direction: TranslationDirection,
+        promptTemplate: String
+    ) async throws -> String {
         let configuration = OpenAICompatibleConfiguration.current()
         guard !configuration.baseURL.isEmpty else {
             throw TranslationServiceError.invalidConfiguration(
@@ -334,12 +339,11 @@ final class CodexTranslationService {
                     ),
                     .init(
                         role: "user",
-                        content: """
-                        Translate the source text to \(direction.targetLanguage).
-
-                        Source text:
-                        \(text)
-                        """
+                        content: PromptSettings.render(
+                            template: promptTemplate,
+                            text: text,
+                            direction: direction
+                        )
                     )
                 ]
             )

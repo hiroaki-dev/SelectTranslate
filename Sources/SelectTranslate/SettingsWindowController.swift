@@ -304,32 +304,64 @@ private final class SettingsModel: ObservableObject {
     }
 }
 
+private enum SettingsSection: String, CaseIterable, Identifiable {
+    case model
+    case shortcuts
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .model:
+            return "Model"
+        case .shortcuts:
+            return "Shortcuts"
+        }
+    }
+
+    var subtitle: String {
+        switch self {
+        case .model:
+            return "Choose translation engines and provider-specific settings."
+        case .shortcuts:
+            return "Create shortcut sets with separate prompt templates."
+        }
+    }
+
+    var iconName: String {
+        switch self {
+        case .model:
+            return "cpu"
+        case .shortcuts:
+            return "keyboard"
+        }
+    }
+}
+
 private struct SettingsView: View {
     @ObservedObject var model: SettingsModel
+    @State private var selectedSection: SettingsSection = .model
     let close: () -> Void
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
+        VStack(alignment: .leading, spacing: 0) {
             header
-            modelSection
-
-            if model.translationProvider == .openAICompatible {
-                apiSection
-            }
-
             Divider()
-            shortcutsSection
+            HStack(alignment: .top, spacing: 0) {
+                sidebar
+                Divider()
+                detail
+            }
         }
-        .padding(20)
-        .frame(minWidth: 700, minHeight: 620)
+        .frame(minWidth: 760, minHeight: 680)
     }
 
     private var header: some View {
         HStack {
             VStack(alignment: .leading, spacing: 4) {
-                Text("Shortcuts")
+                Text("Settings")
                     .font(.system(size: 18, weight: .semibold))
-                Text("Each shortcut can use a different prompt template. \(PromptSettings.instructionToken) and \(PromptSettings.textToken) are supported.")
+                Text("Configure translation engines and shortcut-specific prompts.")
                     .font(.system(size: 12))
                     .foregroundStyle(.secondary)
             }
@@ -339,12 +371,87 @@ private struct SettingsView: View {
             Button("Done", action: close)
                 .keyboardShortcut(.defaultAction)
         }
+        .padding(20)
+    }
+
+    private var sidebar: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            ForEach(SettingsSection.allCases) { section in
+                Button {
+                    selectedSection = section
+                } label: {
+                    HStack(spacing: 8) {
+                        Image(systemName: section.iconName)
+                            .frame(width: 18, height: 18)
+                        Text(section.title)
+                            .font(.system(size: 13, weight: .semibold))
+                        Spacer()
+                    }
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 8)
+                    .background(
+                        RoundedRectangle(cornerRadius: 8)
+                            .fill(selectedSection == section ? Color.accentColor.opacity(0.18) : Color.clear)
+                    )
+                }
+                .buttonStyle(.plain)
+            }
+
+            Spacer()
+        }
+        .padding(12)
+        .frame(width: 180)
+        .frame(maxHeight: .infinity)
+    }
+
+    private var detail: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            sectionHeader
+
+            switch selectedSection {
+            case .model:
+                modelSettings
+            case .shortcuts:
+                shortcutsSettings
+            }
+        }
+        .padding(20)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+    }
+
+    private var sectionHeader: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(selectedSection.title)
+                .font(.system(size: 18, weight: .semibold))
+            Text(selectedSection.subtitle)
+                .font(.system(size: 12))
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    private var modelSettings: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 14) {
+                modelSection
+
+                if model.translationProvider == .openAICompatible {
+                    Divider()
+                    apiSection
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+
+    private var shortcutsSettings: some View {
+        shortcutsSection
     }
 
     private var modelSection: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(alignment: .center, spacing: 12) {
-                Text("Model")
+                Text("Engine")
                     .font(.system(size: 14, weight: .semibold))
 
                 ProviderSegmentedControl(

@@ -31,7 +31,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         configureStatusItem()
         observeShortcutProfileChanges()
         registerHotKeys()
-        panelController.showReady(isAccessibilityTrusted: selectionReader.isAccessibilityTrusted)
+        let isAccessibilityTrusted = selectionReader.requestAccessibilityPermissionPromptIfNeeded()
+        panelController.showReady(isAccessibilityTrusted: isAccessibilityTrusted)
     }
 
     func applicationWillTerminate(_ notification: Notification) {

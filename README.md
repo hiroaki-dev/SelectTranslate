@@ -52,6 +52,8 @@ The default shortcut set preserves the existing `Control + F` behavior. Add anot
 
 macOS Accessibility permission is required so the app can read selected text from the current focused element or app.
 
+On launch, SelectTranslate asks macOS to show the Accessibility prompt if the permission is missing.
+
 If the shortcut shows a permission error:
 
 1. Press `Control + F`; if permission is missing, SelectTranslate asks macOS to show the Accessibility prompt.

@@ -107,7 +107,7 @@ final class TranslationPanelController {
         model.translatedText = ""
         model.directionLabel = Self.contextLabel(direction: direction, shortcutProfile: shortcutProfile)
         model.title = "Translating"
-        model.message = Self.loadingMessage(provider: provider, shortcutProfile: shortcutProfile)
+        model.message = Self.loadingMessage(provider: provider)
         model.backTranslatedText = ""
         model.backTranslationMessage = ""
         model.isLoading = true
@@ -222,15 +222,15 @@ final class TranslationPanelController {
     }
 
     private static func contextLabel(direction: TranslationDirection, shortcutProfile: ShortcutProfile) -> String {
-        "\(direction.label) · \(shortcutProfile.displayName) (\(shortcutProfile.shortcutLabel))"
+        "\(direction.label) · \(shortcutProfile.shortcutLabel)"
     }
 
-    private static func loadingMessage(provider: TranslationProvider, shortcutProfile: ShortcutProfile) -> String {
+    private static func loadingMessage(provider: TranslationProvider) -> String {
         if provider == .plamo {
             return "PLaMo MLX is translating the selected text. Shortcut prompt templates are ignored by PLaMo."
         }
 
-        return "\(provider.description) is translating with \(shortcutProfile.displayName)."
+        return "\(provider.description) is translating the selected text."
     }
 
     private func showPanel() {

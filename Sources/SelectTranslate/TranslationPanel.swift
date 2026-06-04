@@ -97,12 +97,17 @@ final class TranslationPanelController {
         shouldActivateOnNextShow = true
     }
 
-    func showLoading(source: String, direction: TranslationDirection, provider: TranslationProvider) {
+    func showLoading(
+        source: String,
+        direction: TranslationDirection,
+        provider: TranslationProvider,
+        shortcutProfile: ShortcutProfile
+    ) {
         model.sourceText = source
         model.translatedText = ""
-        model.directionLabel = direction.label
+        model.directionLabel = Self.contextLabel(direction: direction, shortcutProfile: shortcutProfile)
         model.title = "Translating"
-        model.message = "\(provider.description) is translating the selected text."
+        model.message = Self.loadingMessage(provider: provider, shortcutProfile: shortcutProfile)
         model.backTranslatedText = ""
         model.backTranslationMessage = ""
         model.isLoading = true
@@ -117,11 +122,12 @@ final class TranslationPanelController {
         source: String,
         translation: String,
         direction: TranslationDirection,
-        provider: TranslationProvider
+        provider: TranslationProvider,
+        shortcutProfile: ShortcutProfile
     ) {
         model.sourceText = source
         model.translatedText = translation
-        model.directionLabel = direction.label
+        model.directionLabel = Self.contextLabel(direction: direction, shortcutProfile: shortcutProfile)
         model.title = "\(provider.label) Translate"
         model.message = ""
         model.backTranslatedText = ""
@@ -202,7 +208,7 @@ final class TranslationPanelController {
             model.translatedText = "Accessibility permission is not enabled yet. Use the SelectTranslate menu bar item and choose Open Accessibility Settings."
         }
 
-        model.directionLabel = "Control + F"
+        model.directionLabel = PromptSettings.defaultShortcutProfile.shortcutLabel
         model.title = "SelectTranslate is Running"
         model.message = ""
         model.backTranslatedText = ""
@@ -213,6 +219,18 @@ final class TranslationPanelController {
         model.isError = false
         model.canBackTranslate = false
         showPanel()
+    }
+
+    private static func contextLabel(direction: TranslationDirection, shortcutProfile: ShortcutProfile) -> String {
+        "\(direction.label) · \(shortcutProfile.displayName) (\(shortcutProfile.shortcutLabel))"
+    }
+
+    private static func loadingMessage(provider: TranslationProvider, shortcutProfile: ShortcutProfile) -> String {
+        if provider == .plamo {
+            return "PLaMo MLX is translating the selected text. Shortcut prompt templates are ignored by PLaMo."
+        }
+
+        return "\(provider.description) is translating with \(shortcutProfile.displayName)."
     }
 
     private func showPanel() {

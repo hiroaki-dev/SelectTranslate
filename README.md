@@ -44,7 +44,9 @@ Use the `Effort` segmented control in the panel to choose the Codex reasoning ef
 
 Use the retranslation button in the `Translation` header to translate the current translation back to the original language. The back translation appears at the bottom of the `Translation` area.
 
-Use `SelectTranslate` > `Settings...` to edit the prompt template. The template supports `{{instruction}}` for the current translation direction and `{{text}}` for the selected text.
+Use `SelectTranslate` > `Settings...` to create multiple shortcut sets. Each set has a display name, global shortcut, and prompt template. The template supports `{{instruction}}` for the current translation direction and `{{text}}` for the selected text.
+
+The default shortcut set preserves the existing `Control + F` behavior. Add another shortcut set when you want a different translation style, such as stricter technical terminology or a more natural rewrite.
 
 ## Permissions
 
@@ -76,7 +78,7 @@ The selected panel effort is passed as:
 -c 'model_reasoning_effort="<effort>"'
 ```
 
-The saved prompt template is rendered and sent to `codex exec` over stdin.
+The active shortcut set's prompt template is rendered and sent to `codex exec` over stdin.
 
 ## PLaMo command
 
@@ -106,7 +108,7 @@ After setup, the app runs:
 ~/Library/Application\ Support/SelectTranslate/PLaMoEnvironment/bin/python3 -m mlx_lm generate --model mlx-community/plamo-2-translate --trust-remote-code --extra-eos-token '<|plamo:op|>' --prompt '<selected text>'
 ```
 
-PLaMo is a translation-specialized model and is not instruction-tuned for chat, so the app sends the selected text directly instead of the editable Codex prompt template.
+PLaMo is a translation-specialized model and is not instruction-tuned for chat, so the app sends the selected text directly. Shortcut prompt templates are used by Codex and API, but ignored by PLaMo.
 
 ## OpenAI-compatible API
 
@@ -122,7 +124,7 @@ Configure these values in `SelectTranslate` > `Settings...`:
 - `api_key`: optional; leave it blank for local servers that do not require authentication
 - `model`: the model name served by the local API
 
-The request uses a `system` message that asks for translation output only, and a `user` message containing the source text and target language. It uses `/chat/completions`, not `/completions`.
+The request uses a `system` message that asks for translation output only, and a `user` message rendered from the active shortcut set's prompt template. It uses `/chat/completions`, not `/completions`.
 
 ## License
 

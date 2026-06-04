@@ -16,6 +16,7 @@ enum HotKeyError: LocalizedError {
 }
 
 final class HotKeyManager {
+    private let id: UInt32
     private let keyCode: UInt32
     private let modifiers: UInt32
     private let handler: () -> Void
@@ -23,7 +24,8 @@ final class HotKeyManager {
     private var hotKeyRef: EventHotKeyRef?
     private var eventHandlerRef: EventHandlerRef?
 
-    init(keyCode: UInt32, modifiers: UInt32, handler: @escaping () -> Void) {
+    init(id: UInt32, keyCode: UInt32, modifiers: UInt32, handler: @escaping () -> Void) {
+        self.id = id
         self.keyCode = keyCode
         self.modifiers = modifiers
         self.handler = handler
@@ -34,6 +36,8 @@ final class HotKeyManager {
     }
 
     func register() throws {
+        unregister()
+
         var eventType = EventTypeSpec(
             eventClass: OSType(kEventClassKeyboard),
             eventKind: UInt32(kEventHotKeyPressed)
@@ -59,7 +63,7 @@ final class HotKeyManager {
             throw HotKeyError.installHandlerFailed(installStatus)
         }
 
-        let hotKeyID = EventHotKeyID(signature: Self.signature("CDTX"), id: 1)
+        let hotKeyID = EventHotKeyID(signature: Self.signature("SLTR"), id: id)
         let registerStatus = RegisterEventHotKey(
             keyCode,
             modifiers,
@@ -72,6 +76,7 @@ final class HotKeyManager {
         guard registerStatus == noErr else {
             if let eventHandlerRef {
                 RemoveEventHandler(eventHandlerRef)
+                self.eventHandlerRef = nil
             }
             throw HotKeyError.registerFailed(registerStatus)
         }

@@ -1,6 +1,6 @@
 import Foundation
 
-enum TranslationDirection {
+enum TranslationDirection: Hashable {
     case englishToJapanese
     case japaneseToEnglish
 

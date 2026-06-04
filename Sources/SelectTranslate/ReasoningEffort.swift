@@ -1,6 +1,6 @@
 import Foundation
 
-enum ReasoningEffort: String, CaseIterable, Identifiable {
+enum ReasoningEffort: String, CaseIterable, Identifiable, Hashable {
     case low
     case medium
     case high

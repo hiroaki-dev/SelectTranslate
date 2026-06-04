@@ -1,6 +1,6 @@
 import Foundation
 
-enum TranslationProvider: String, CaseIterable, Identifiable {
+enum TranslationProvider: String, CaseIterable, Identifiable, Hashable {
     case codex
     case plamo
     case openAICompatible

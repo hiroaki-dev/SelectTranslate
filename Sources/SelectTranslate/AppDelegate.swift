@@ -15,6 +15,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var accessibilityRetryTask: Task<Void, Never>?
     private var currentTranslationRequest: TranslationRequest?
     private var currentTranslationResult: TranslationResult?
+    private var translationCache: [TranslationCacheKey: String] = [:]
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.regular)
@@ -254,6 +255,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             )
             let direction = TranslationDirection.detect(sourceText)
             let request = TranslationRequest(sourceText: sourceText, direction: direction, shortcutProfile: shortcutProfile)
+            if currentTranslationRequest?.sourceText != sourceText {
+                translationCache.removeAll()
+            }
             currentTranslationRequest = request
 
             await translate(
@@ -351,6 +355,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func translate(request: TranslationRequest, effort: ReasoningEffort, provider: TranslationProvider) async {
         do {
+            let cacheKey = TranslationCacheKey(request: request, effort: effort, provider: provider)
             currentTranslationResult = nil
             panelController.showLoading(
                 source: request.sourceText,
@@ -365,6 +370,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 provider: provider,
                 promptTemplate: request.shortcutProfile.normalizedPromptTemplate
             )
+            translationCache[cacheKey] = translatedText
             currentTranslationResult = TranslationResult(
                 sourceText: request.sourceText,
                 direction: request.direction,
@@ -403,6 +409,32 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
+    private func showCachedTranslationIfAvailable(
+        request: TranslationRequest,
+        effort: ReasoningEffort,
+        provider: TranslationProvider
+    ) -> Bool {
+        let cacheKey = TranslationCacheKey(request: request, effort: effort, provider: provider)
+        guard let translatedText = translationCache[cacheKey] else {
+            return false
+        }
+
+        currentTranslationResult = TranslationResult(
+            sourceText: request.sourceText,
+            direction: request.direction,
+            translatedText: translatedText,
+            shortcutProfile: request.shortcutProfile
+        )
+        panelController.showResult(
+            source: request.sourceText,
+            translation: translatedText,
+            direction: request.direction,
+            provider: provider,
+            shortcutProfile: request.shortcutProfile
+        )
+        return true
+    }
+
     private func applyProviderChange(_ provider: TranslationProvider) async {
         if provider == .plamo, !PlamoSetupService.isSetupComplete {
             TranslationPreferences.translationProvider = .codex
@@ -416,7 +448,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
 
         guard let request = currentTranslationRequest else { return }
-        await translate(request: request, effort: panelController.reasoningEffort, provider: provider)
+        let effort = panelController.reasoningEffort
+        if showCachedTranslationIfAvailable(request: request, effort: effort, provider: provider) {
+            return
+        }
+
+        await translate(request: request, effort: effort, provider: provider)
     }
 }
 
@@ -431,4 +468,32 @@ private struct TranslationResult {
     let direction: TranslationDirection
     let translatedText: String
     let shortcutProfile: ShortcutProfile
+}
+
+private struct TranslationCacheKey: Hashable {
+    let sourceText: String
+    let direction: TranslationDirection
+    let provider: TranslationProvider
+    let effort: ReasoningEffort
+    let shortcutProfileID: String
+    let promptTemplate: String
+    let apiBaseURL: String
+    let apiModel: String
+
+    init(request: TranslationRequest, effort: ReasoningEffort, provider: TranslationProvider) {
+        sourceText = request.sourceText
+        direction = request.direction
+        self.provider = provider
+        self.effort = provider == .codex ? effort : .low
+        shortcutProfileID = request.shortcutProfile.id
+        promptTemplate = provider == .plamo ? "" : request.shortcutProfile.normalizedPromptTemplate
+
+        if provider == .openAICompatible {
+            apiBaseURL = OpenAICompatibleSettings.baseURL
+            apiModel = OpenAICompatibleSettings.model
+        } else {
+            apiBaseURL = ""
+            apiModel = ""
+        }
+    }
 }

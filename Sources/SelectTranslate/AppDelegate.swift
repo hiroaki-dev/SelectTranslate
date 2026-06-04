@@ -394,7 +394,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func backTranslate(result: TranslationResult, effort: ReasoningEffort, provider: TranslationProvider) async {
+        if showCachedBackTranslationIfAvailable(result: result, effort: effort, provider: provider) {
+            return
+        }
+
         do {
+            let cacheKey = TranslationCacheKey.backTranslation(result: result, effort: effort, provider: provider)
             panelController.showBackTranslationLoading()
             let backTranslatedText = try await translator.translate(
                 result.translatedText,
@@ -403,6 +408,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 provider: provider,
                 promptTemplate: result.shortcutProfile.normalizedPromptTemplate
             )
+            translationCache[cacheKey] = backTranslatedText
             panelController.showBackTranslationResult(backTranslatedText)
         } catch {
             panelController.showBackTranslationError(error.localizedDescription)
@@ -419,12 +425,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             return false
         }
 
-        currentTranslationResult = TranslationResult(
+        let result = TranslationResult(
             sourceText: request.sourceText,
             direction: request.direction,
             translatedText: translatedText,
             shortcutProfile: request.shortcutProfile
         )
+        currentTranslationResult = result
         panelController.showResult(
             source: request.sourceText,
             translation: translatedText,
@@ -432,6 +439,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             provider: provider,
             shortcutProfile: request.shortcutProfile
         )
+        _ = showCachedBackTranslationIfAvailable(result: result, effort: effort, provider: provider)
+        return true
+    }
+
+    private func showCachedBackTranslationIfAvailable(
+        result: TranslationResult,
+        effort: ReasoningEffort,
+        provider: TranslationProvider
+    ) -> Bool {
+        let cacheKey = TranslationCacheKey.backTranslation(result: result, effort: effort, provider: provider)
+        guard let backTranslatedText = translationCache[cacheKey] else {
+            return false
+        }
+
+        panelController.showBackTranslationResult(backTranslatedText)
         return true
     }
 
@@ -481,12 +503,42 @@ private struct TranslationCacheKey: Hashable {
     let apiModel: String
 
     init(request: TranslationRequest, effort: ReasoningEffort, provider: TranslationProvider) {
-        sourceText = request.sourceText
-        direction = request.direction
+        self.init(
+            sourceText: request.sourceText,
+            direction: request.direction,
+            shortcutProfile: request.shortcutProfile,
+            effort: effort,
+            provider: provider
+        )
+    }
+
+    static func backTranslation(
+        result: TranslationResult,
+        effort: ReasoningEffort,
+        provider: TranslationProvider
+    ) -> TranslationCacheKey {
+        TranslationCacheKey(
+            sourceText: result.translatedText,
+            direction: result.direction.reversed,
+            shortcutProfile: result.shortcutProfile,
+            effort: effort,
+            provider: provider
+        )
+    }
+
+    private init(
+        sourceText: String,
+        direction: TranslationDirection,
+        shortcutProfile: ShortcutProfile,
+        effort: ReasoningEffort,
+        provider: TranslationProvider
+    ) {
+        self.sourceText = sourceText
+        self.direction = direction
         self.provider = provider
         self.effort = provider == .codex ? effort : .low
-        shortcutProfileID = request.shortcutProfile.id
-        promptTemplate = provider == .plamo ? "" : request.shortcutProfile.normalizedPromptTemplate
+        shortcutProfileID = shortcutProfile.id
+        promptTemplate = provider == .plamo ? "" : shortcutProfile.normalizedPromptTemplate
 
         if provider == .openAICompatible {
             apiBaseURL = OpenAICompatibleSettings.baseURL

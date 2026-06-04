@@ -222,7 +222,31 @@ final class TranslationPanelController {
     }
 
     private static func contextLabel(direction: TranslationDirection, shortcutProfile: ShortcutProfile) -> String {
-        "\(direction.label) · \(shortcutProfile.shortcutLabel)"
+        let name = shortcutContextName(shortcutProfile)
+        guard !name.isEmpty else {
+            return direction.label
+        }
+
+        return "\(direction.label) · \(name)"
+    }
+
+    private static func shortcutContextName(_ shortcutProfile: ShortcutProfile) -> String {
+        let name = shortcutProfile.displayName
+        return isPlaceholderShortcutName(name) ? "" : name
+    }
+
+    private static func isPlaceholderShortcutName(_ name: String) -> Bool {
+        let trimmedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedName.isEmpty else { return true }
+
+        if trimmedName == "Untitled Shortcut" || trimmedName == "New Shortcut" {
+            return true
+        }
+
+        return trimmedName.range(
+            of: #"^New Shortcut \d+$"#,
+            options: [.regularExpression]
+        ) != nil
     }
 
     private static func loadingMessage(provider: TranslationProvider) -> String {

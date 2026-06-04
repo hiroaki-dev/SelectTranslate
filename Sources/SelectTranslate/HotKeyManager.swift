@@ -16,6 +16,8 @@ enum HotKeyError: LocalizedError {
 }
 
 final class HotKeyManager {
+    private static let hotKeySignature = signature("SLTR")
+
     private let id: UInt32
     private let keyCode: UInt32
     private let modifiers: UInt32
@@ -45,9 +47,26 @@ final class HotKeyManager {
 
         let installStatus = InstallEventHandler(
             GetApplicationEventTarget(),
-            { _, _, userData in
-                guard let userData else { return noErr }
+            { _, event, userData in
+                guard let userData, let event else { return OSStatus(eventNotHandledErr) }
                 let manager = Unmanaged<HotKeyManager>.fromOpaque(userData).takeUnretainedValue()
+
+                var hotKeyID = EventHotKeyID()
+                let parameterStatus = GetEventParameter(
+                    event,
+                    EventParamName(kEventParamDirectObject),
+                    EventParamType(typeEventHotKeyID),
+                    nil,
+                    MemoryLayout<EventHotKeyID>.size,
+                    nil,
+                    &hotKeyID
+                )
+                guard parameterStatus == noErr,
+                      hotKeyID.signature == HotKeyManager.hotKeySignature,
+                      hotKeyID.id == manager.id else {
+                    return OSStatus(eventNotHandledErr)
+                }
+
                 DispatchQueue.main.async {
                     manager.handler()
                 }
@@ -63,7 +82,7 @@ final class HotKeyManager {
             throw HotKeyError.installHandlerFailed(installStatus)
         }
 
-        let hotKeyID = EventHotKeyID(signature: Self.signature("SLTR"), id: id)
+        let hotKeyID = EventHotKeyID(signature: Self.hotKeySignature, id: id)
         let registerStatus = RegisterEventHotKey(
             keyCode,
             modifiers,

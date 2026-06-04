@@ -335,11 +335,7 @@ private struct TranslationOverlayView: View {
 
             Spacer()
 
-            providerPicker
-
-            if model.translationProvider == .codex {
-                effortPicker
-            }
+            headerControls
 
             if model.isLoading {
                 ProgressView()
@@ -353,6 +349,16 @@ private struct TranslationOverlayView: View {
             }
             .buttonStyle(.plain)
             .help("Close")
+        }
+    }
+
+    private var headerControls: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            providerPicker
+
+            if model.translationProvider == .codex {
+                effortPicker
+            }
         }
     }
 

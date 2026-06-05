@@ -1,4 +1,5 @@
 import AppKit
+import Carbon
 import SwiftUI
 
 @MainActor
@@ -67,6 +68,10 @@ final class TranslationPanelModel: ObservableObject {
         guard sourceText != text else { return }
 
         sourceText = text
+        guard text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            return
+        }
+
         translatedText = ""
         message = ""
         directionLabel = ""
@@ -727,6 +732,7 @@ private struct OriginalTextEditor: NSViewRepresentable {
                 return
             }
 
+            parent.text = sourceText
             parent.onTranslate()
         }
     }
@@ -736,7 +742,9 @@ private struct OriginalTextEditor: NSViewRepresentable {
 
         override func keyDown(with event: NSEvent) {
             let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
-            if flags.contains(.option), event.charactersIgnoringModifiers == "\r" {
+            let isReturnKey = event.keyCode == UInt16(kVK_Return) ||
+                event.keyCode == UInt16(kVK_ANSI_KeypadEnter)
+            if flags.contains(.option), isReturnKey {
                 onOptionReturn?()
                 return
             }

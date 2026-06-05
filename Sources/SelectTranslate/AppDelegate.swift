@@ -28,6 +28,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         panelController.onBackTranslateRequested = { [weak self] in
             self?.startBackTranslation()
         }
+        panelController.onSourceTranslateRequested = { [weak self] in
+            self?.startManualSourceTranslation()
+        }
         configureApplicationMenu()
         configureStatusItem()
         observeShortcutProfileChanges()
@@ -209,13 +212,47 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func startSourceRetranslation(effort: ReasoningEffort, provider: TranslationProvider) {
-        guard let request = currentTranslationRequest else { return }
+        guard let request = makeTranslationRequest(from: panelController.sourceText) else { return }
         guard translationTask == nil else { return }
 
         translationTask = Task { [weak self] in
             guard let self else { return }
             defer { self.translationTask = nil }
-            await self.translate(request: request, effort: effort, provider: provider)
+            await self.translatePreparedRequest(request, effort: effort, provider: provider)
+        }
+    }
+
+    private func startManualSourceTranslation() {
+        cancelAccessibilityRetry()
+        let sourceText = panelController.sourceText
+        guard let request = makeTranslationRequest(from: sourceText) else {
+            panelController.showError(
+                source: sourceText,
+                title: "No Original Text",
+                message: "Type or paste text in Original before translating."
+            )
+            return
+        }
+
+        panelController.activateOnNextShow()
+
+        guard translationTask == nil else {
+            panelController.showError(
+                source: sourceText,
+                title: "Translation Running",
+                message: "The current translation is still running."
+            )
+            return
+        }
+
+        translationTask = Task { [weak self] in
+            guard let self else { return }
+            defer { self.translationTask = nil }
+            await self.translatePreparedRequest(
+                request,
+                effort: self.panelController.reasoningEffort,
+                provider: self.panelController.translationProvider
+            )
         }
     }
 
@@ -253,12 +290,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             let sourceText = try await selectionReader.readSelectedText(
                 preferredProcessIdentifier: preferredProcessIdentifier
             )
-            let direction = TranslationDirection.detect(sourceText)
-            let request = TranslationRequest(sourceText: sourceText, direction: direction, shortcutProfile: shortcutProfile)
-            if currentTranslationRequest?.sourceText != sourceText {
-                translationCache.removeAll()
-            }
-            currentTranslationRequest = request
+            let request = TranslationRequest(
+                sourceText: sourceText,
+                direction: TranslationDirection.detect(sourceText),
+                shortcutProfile: shortcutProfile
+            )
+            updateCurrentTranslationRequest(request)
 
             await translate(
                 request: request,
@@ -351,6 +388,48 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
 
         return application.processIdentifier
+    }
+
+    private func makeTranslationRequest(from sourceText: String) -> TranslationRequest? {
+        guard !sourceText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            return nil
+        }
+
+        let shortcutProfile = activeShortcutProfile()
+        return TranslationRequest(
+            sourceText: sourceText,
+            direction: TranslationDirection.detect(sourceText),
+            shortcutProfile: shortcutProfile
+        )
+    }
+
+    private func activeShortcutProfile() -> ShortcutProfile {
+        guard let shortcutProfile = currentTranslationRequest?.shortcutProfile else {
+            return PromptSettings.defaultShortcutProfile
+        }
+
+        return PromptSettings.profile(withID: shortcutProfile.id) ?? shortcutProfile
+    }
+
+    private func updateCurrentTranslationRequest(_ request: TranslationRequest) {
+        if currentTranslationRequest?.sourceText != request.sourceText {
+            translationCache.removeAll()
+            currentTranslationResult = nil
+        }
+        currentTranslationRequest = request
+    }
+
+    private func translatePreparedRequest(
+        _ request: TranslationRequest,
+        effort: ReasoningEffort,
+        provider: TranslationProvider
+    ) async {
+        updateCurrentTranslationRequest(request)
+        if showCachedTranslationIfAvailable(request: request, effort: effort, provider: provider) {
+            return
+        }
+
+        await translate(request: request, effort: effort, provider: provider)
     }
 
     private func translate(request: TranslationRequest, effort: ReasoningEffort, provider: TranslationProvider) async {
@@ -469,13 +548,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             return
         }
 
-        guard let request = currentTranslationRequest else { return }
+        guard let request = makeTranslationRequest(from: panelController.sourceText) else { return }
         let effort = panelController.reasoningEffort
-        if showCachedTranslationIfAvailable(request: request, effort: effort, provider: provider) {
-            return
-        }
-
-        await translate(request: request, effort: effort, provider: provider)
+        await translatePreparedRequest(request, effort: effort, provider: provider)
     }
 }
 

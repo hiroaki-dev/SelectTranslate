@@ -96,6 +96,7 @@ final class TranslationPanelController {
     var onReasoningEffortChanged: ((ReasoningEffort) -> Void)?
     var onTranslationProviderChanged: ((TranslationProvider) -> Void)?
     var onBackTranslateRequested: (() -> Void)?
+    var onSourceTranslateRequested: (() -> Void)?
 
     var reasoningEffort: ReasoningEffort {
         model.reasoningEffort
@@ -103,6 +104,10 @@ final class TranslationPanelController {
 
     var translationProvider: TranslationProvider {
         model.translationProvider
+    }
+
+    var sourceText: String {
+        model.sourceText
     }
 
     func setTranslationProvider(_ provider: TranslationProvider) {
@@ -312,6 +317,9 @@ final class TranslationPanelController {
                 backTranslate: { [weak self] in
                     self?.onBackTranslateRequested?()
                 },
+                translateSource: { [weak self] in
+                    self?.onSourceTranslateRequested?()
+                },
                 close: { [weak panel] in
                     panel?.close()
                 }
@@ -327,6 +335,7 @@ private struct TranslationOverlayView: View {
     let effortChanged: (ReasoningEffort) -> Void
     let providerChanged: (TranslationProvider) -> Void
     let backTranslate: () -> Void
+    let translateSource: () -> Void
     let close: () -> Void
 
     var body: some View {
@@ -442,6 +451,7 @@ private struct TranslationOverlayView: View {
     private var translationBody: some View {
         HStack(alignment: .top, spacing: 12) {
             originalPane
+            sourceTranslateButton
             translationPane
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -450,6 +460,7 @@ private struct TranslationOverlayView: View {
     private var errorBody: some View {
         HStack(alignment: .top, spacing: 12) {
             originalPane
+            sourceTranslateButton
             simpleTextPane(title: "Details", text: model.message, placeholder: "")
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -469,6 +480,23 @@ private struct TranslationOverlayView: View {
             editableTextBox(placeholder: "")
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    private var sourceTranslateButton: some View {
+        VStack {
+            Spacer()
+            Button(action: translateSource) {
+                Image(systemName: "arrow.right.circle.fill")
+                    .font(.system(size: 22, weight: .semibold))
+                    .frame(width: 32, height: 32)
+            }
+            .buttonStyle(.plain)
+            .disabled(!canTranslateSource)
+            .help("Translate original text")
+            Spacer()
+        }
+        .frame(width: 34)
+        .frame(maxHeight: .infinity)
     }
 
     private func simpleTextPane(title: String, text: String, placeholder: String) -> some View {
@@ -566,6 +594,12 @@ private struct TranslationOverlayView: View {
         model.isBackTranslating || !model.backTranslatedText.isEmpty || !model.backTranslationMessage.isEmpty
     }
 
+    private var canTranslateSource: Bool {
+        !model.isLoading &&
+            !model.isBackTranslating &&
+            !model.sourceText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
     private func textBox(text: String, placeholder: String) -> some View {
         scrollText(text: text, placeholder: placeholder, isError: false)
             .background(
@@ -580,16 +614,14 @@ private struct TranslationOverlayView: View {
 
     private func editableTextBox(placeholder: String) -> some View {
         ZStack(alignment: .topLeading) {
-            TextEditor(
+            OriginalTextEditor(
                 text: Binding(
                     get: { model.sourceText },
                     set: { model.updateSourceTextFromUser($0) }
-                )
+                ),
+                isDisabled: model.isLoading || model.isBackTranslating,
+                onTranslate: translateSource
             )
-            .font(.system(size: 15))
-            .scrollContentBackground(.hidden)
-            .padding(8)
-            .disabled(model.isLoading || model.isBackTranslating)
 
             if model.sourceText.isEmpty, !placeholder.isEmpty {
                 Text(placeholder)
@@ -617,6 +649,99 @@ private struct TranslationOverlayView: View {
                 .textSelection(.enabled)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(12)
+        }
+    }
+}
+
+private struct OriginalTextEditor: NSViewRepresentable {
+    @Binding var text: String
+    let isDisabled: Bool
+    let onTranslate: () -> Void
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(self)
+    }
+
+    func makeNSView(context: Context) -> NSScrollView {
+        let scrollView = NSScrollView()
+        scrollView.drawsBackground = false
+        scrollView.borderType = .noBorder
+        scrollView.hasVerticalScroller = true
+        scrollView.hasHorizontalScroller = false
+        scrollView.autohidesScrollers = true
+
+        let textView = OptionReturnTextView()
+        textView.delegate = context.coordinator
+        textView.string = text
+        textView.isRichText = false
+        textView.importsGraphics = false
+        textView.allowsUndo = true
+        textView.isVerticallyResizable = true
+        textView.isHorizontallyResizable = false
+        textView.autoresizingMask = [.width]
+        textView.backgroundColor = .clear
+        textView.drawsBackground = false
+        textView.font = NSFont.systemFont(ofSize: 15)
+        textView.textColor = NSColor.labelColor
+        textView.textContainerInset = NSSize(width: 8, height: 8)
+        textView.textContainer?.widthTracksTextView = true
+        textView.onOptionReturn = {
+            context.coordinator.translate()
+        }
+        scrollView.documentView = textView
+        context.coordinator.textView = textView
+        return scrollView
+    }
+
+    func updateNSView(_ scrollView: NSScrollView, context: Context) {
+        context.coordinator.parent = self
+        guard let textView = scrollView.documentView as? OptionReturnTextView else { return }
+
+        if textView.string != text {
+            textView.string = text
+        }
+        textView.isEditable = !isDisabled
+        textView.isSelectable = true
+        textView.onOptionReturn = {
+            context.coordinator.translate()
+        }
+    }
+
+    final class Coordinator: NSObject, NSTextViewDelegate {
+        var parent: OriginalTextEditor
+        weak var textView: NSTextView?
+
+        init(_ parent: OriginalTextEditor) {
+            self.parent = parent
+        }
+
+        func textDidChange(_ notification: Notification) {
+            guard let textView = notification.object as? NSTextView else { return }
+            parent.text = textView.string
+        }
+
+        func translate() {
+            let sourceText = textView?.string ?? parent.text
+            guard !parent.isDisabled,
+                  !sourceText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+                return
+            }
+
+            parent.onTranslate()
+        }
+    }
+
+    final class OptionReturnTextView: NSTextView {
+        var onOptionReturn: (() -> Void)?
+
+        override func keyDown(with event: NSEvent) {
+            let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
+            if flags.contains(.option), event.charactersIgnoringModifiers == "\r" {
+                onOptionReturn?()
+                return
+            }
+
+            super.keyDown(with: event)
         }
     }
 }

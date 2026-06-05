@@ -35,6 +35,10 @@ enum AppPaths {
         return url
     }
 
+    static var translationHistoryDatabaseURL: URL {
+        applicationSupportURL.appendingPathComponent("TranslationHistory.sqlite3")
+    }
+
     static func processEnvironment(workingDirectory: String) -> [String: String] {
         var environment = ProcessInfo.processInfo.environment
         let fallbackPath = "/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"

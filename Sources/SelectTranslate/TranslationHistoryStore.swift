@@ -11,12 +11,12 @@ struct TranslationHistoryItem: Identifiable, Equatable {
     let directionLabel: String
 
     var originalPreview: String {
-        let firstLine = originalText
-            .components(separatedBy: .newlines)
-            .first?
-            .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        guard firstLine.count > 20 else { return firstLine }
-        return "\(firstLine.prefix(20))..."
+        let lines = originalText.components(separatedBy: .newlines)
+        let firstLine = lines.first?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let hasAdditionalLines = lines.dropFirst().contains { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+        let needsEllipsis = firstLine.count > 20 || hasAdditionalLines
+        let preview = firstLine.count > 20 ? String(firstLine.prefix(20)) : firstLine
+        return needsEllipsis ? "\(preview)..." : preview
     }
 }
 

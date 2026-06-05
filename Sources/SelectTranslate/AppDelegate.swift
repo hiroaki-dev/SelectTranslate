@@ -32,6 +32,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         panelController.onSourceTranslateRequested = { [weak self] in
             self?.startManualSourceTranslation()
         }
+        panelController.onHistoryItemSelected = { [weak self] item in
+            self?.showHistoryItem(item)
+        }
+        panelController.setHistoryItems(historyStore.loadItems())
         configureApplicationMenu()
         configureStatusItem()
         observeShortcutProfileChanges()
@@ -485,13 +489,29 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         provider: TranslationProvider,
         effort: ReasoningEffort
     ) {
-        historyStore.insert(
+        guard let item = historyStore.insert(
             originalText: request.sourceText,
             translatedText: translatedText,
             engineLabel: historyEngineLabel(provider: provider, effort: effort),
             providerRawValue: provider.rawValue,
             directionLabel: request.direction.label
+        ) else {
+            return
+        }
+
+        panelController.prependHistoryItem(item)
+    }
+
+    private func showHistoryItem(_ item: TranslationHistoryItem) {
+        cancelAccessibilityRetry()
+        currentTranslationRequest = TranslationRequest(
+            sourceText: item.originalText,
+            direction: TranslationDirection.detect(item.originalText),
+            shortcutProfile: PromptSettings.defaultShortcutProfile
         )
+        currentTranslationResult = nil
+        panelController.activateOnNextShow()
+        panelController.showHistoryItem(item)
     }
 
     private func historyEngineLabel(provider: TranslationProvider, effort: ReasoningEffort) -> String {

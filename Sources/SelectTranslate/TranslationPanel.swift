@@ -19,6 +19,8 @@ final class TranslationPanelModel: ObservableObject {
     @Published var isBackTranslationError: Bool = false
     @Published var isError: Bool = false
     @Published var canBackTranslate: Bool = false
+    @Published var historyItems: [TranslationHistoryItem] = []
+    @Published var selectedHistoryID: Int64?
     @Published var isPlamoReady: Bool
     @Published var reasoningEffort: ReasoningEffort {
         didSet {
@@ -68,6 +70,7 @@ final class TranslationPanelModel: ObservableObject {
         guard sourceText != text else { return }
 
         sourceText = text
+        selectedHistoryID = nil
         guard text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             return
         }
@@ -82,6 +85,39 @@ final class TranslationPanelModel: ObservableObject {
         isBackTranslationError = false
         isError = false
         canBackTranslate = false
+    }
+
+    func setHistoryItems(_ items: [TranslationHistoryItem]) {
+        historyItems = items
+        if let selectedHistoryID, !items.contains(where: { $0.id == selectedHistoryID }) {
+            self.selectedHistoryID = nil
+        }
+    }
+
+    func prependHistoryItem(_ item: TranslationHistoryItem, limit: Int = 200) {
+        var items = historyItems.filter { $0.id != item.id }
+        items.insert(item, at: 0)
+        if items.count > limit {
+            items = Array(items.prefix(limit))
+        }
+        historyItems = items
+        selectedHistoryID = item.id
+    }
+
+    func showHistoryItem(_ item: TranslationHistoryItem) {
+        sourceText = item.originalText
+        translatedText = item.translatedText
+        directionLabel = "\(item.directionLabel) · \(item.engineLabel)"
+        title = "\(item.engineLabel) Translate"
+        message = ""
+        backTranslatedText = ""
+        backTranslationMessage = ""
+        isLoading = false
+        isBackTranslating = false
+        isBackTranslationError = false
+        isError = false
+        canBackTranslate = false
+        selectedHistoryID = item.id
     }
 
     private func refreshPlamoReadiness() {
@@ -102,6 +138,7 @@ final class TranslationPanelController {
     var onTranslationProviderChanged: ((TranslationProvider) -> Void)?
     var onBackTranslateRequested: (() -> Void)?
     var onSourceTranslateRequested: (() -> Void)?
+    var onHistoryItemSelected: ((TranslationHistoryItem) -> Void)?
 
     var reasoningEffort: ReasoningEffort {
         model.reasoningEffort
@@ -123,6 +160,19 @@ final class TranslationPanelController {
         shouldActivateOnNextShow = true
     }
 
+    func setHistoryItems(_ items: [TranslationHistoryItem]) {
+        model.setHistoryItems(items)
+    }
+
+    func prependHistoryItem(_ item: TranslationHistoryItem) {
+        model.prependHistoryItem(item)
+    }
+
+    func showHistoryItem(_ item: TranslationHistoryItem) {
+        model.showHistoryItem(item)
+        showPanel()
+    }
+
     func showLoading(
         source: String,
         direction: TranslationDirection,
@@ -141,6 +191,7 @@ final class TranslationPanelController {
         model.isBackTranslationError = false
         model.isError = false
         model.canBackTranslate = false
+        model.selectedHistoryID = nil
         showPanel()
     }
 
@@ -163,6 +214,7 @@ final class TranslationPanelController {
         model.isBackTranslationError = false
         model.isError = false
         model.canBackTranslate = true
+        model.selectedHistoryID = nil
         showPanel()
     }
 
@@ -179,6 +231,7 @@ final class TranslationPanelController {
         model.isBackTranslationError = false
         model.isError = true
         model.canBackTranslate = false
+        model.selectedHistoryID = nil
         showPanel()
     }
 
@@ -240,6 +293,7 @@ final class TranslationPanelController {
         model.isBackTranslationError = false
         model.isError = false
         model.canBackTranslate = false
+        model.selectedHistoryID = nil
         showPanel()
     }
 
@@ -294,7 +348,7 @@ final class TranslationPanelController {
     }
 
     private func makePanel() -> NSPanel {
-        let size = NSSize(width: 760, height: 420)
+        let size = NSSize(width: 980, height: 460)
         let panel = NSPanel(
             contentRect: NSRect(origin: .zero, size: size),
             styleMask: [.titled, .closable, .resizable, .fullSizeContentView],
@@ -303,7 +357,7 @@ final class TranslationPanelController {
         )
 
         panel.title = "SelectTranslate"
-        panel.minSize = NSSize(width: 720, height: 360)
+        panel.minSize = NSSize(width: 900, height: 360)
         panel.titlebarAppearsTransparent = true
         panel.isMovableByWindowBackground = true
         panel.level = .normal
@@ -325,6 +379,9 @@ final class TranslationPanelController {
                 translateSource: { [weak self] in
                     self?.onSourceTranslateRequested?()
                 },
+                selectHistoryItem: { [weak self] item in
+                    self?.onHistoryItemSelected?(item)
+                },
                 close: { [weak panel] in
                     panel?.close()
                 }
@@ -341,9 +398,54 @@ private struct TranslationOverlayView: View {
     let providerChanged: (TranslationProvider) -> Void
     let backTranslate: () -> Void
     let translateSource: () -> Void
+    let selectHistoryItem: (TranslationHistoryItem) -> Void
     let close: () -> Void
 
     var body: some View {
+        HStack(spacing: 0) {
+            historySidebar
+            Divider()
+            mainContent
+        }
+        .frame(minWidth: 900, minHeight: 360)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(.regularMaterial)
+        .onChange(of: model.reasoningEffort) { newEffort in
+            effortChanged(newEffort)
+        }
+        .onChange(of: model.translationProvider) { newProvider in
+            providerChanged(newProvider)
+        }
+    }
+
+    private var historySidebar: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("History")
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(.secondary)
+
+            if model.historyItems.isEmpty {
+                Text("No history yet")
+                    .font(.system(size: 12))
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.top, 4)
+            } else {
+                ScrollView {
+                    LazyVStack(alignment: .leading, spacing: 6) {
+                        ForEach(model.historyItems) { item in
+                            historyRow(item)
+                        }
+                    }
+                }
+            }
+        }
+        .padding(14)
+        .frame(width: 230, alignment: .topLeading)
+        .frame(maxHeight: .infinity, alignment: .topLeading)
+    }
+
+    private var mainContent: some View {
         VStack(alignment: .leading, spacing: 16) {
             header
 
@@ -354,16 +456,43 @@ private struct TranslationOverlayView: View {
             }
         }
         .padding(20)
-        .frame(minWidth: 720, minHeight: 360)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(.regularMaterial)
-        .onChange(of: model.reasoningEffort) { newEffort in
-            effortChanged(newEffort)
-        }
-        .onChange(of: model.translationProvider) { newProvider in
-            providerChanged(newProvider)
-        }
     }
+
+    private func historyRow(_ item: TranslationHistoryItem) -> some View {
+        Button {
+            selectHistoryItem(item)
+        } label: {
+            VStack(alignment: .leading, spacing: 4) {
+                Text(Self.historyDateFormatter.string(from: item.createdAt))
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                Text(item.originalPreview.isEmpty ? "(empty)" : item.originalPreview)
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(.primary)
+                    .lineLimit(1)
+                Text(item.engineLabel)
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+            .padding(8)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(
+                RoundedRectangle(cornerRadius: 8)
+                    .fill(model.selectedHistoryID == item.id ? Color.accentColor.opacity(0.2) : Color.clear)
+            )
+        }
+        .buttonStyle(.plain)
+    }
+
+    private static let historyDateFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateStyle = .short
+        formatter.timeStyle = .short
+        return formatter
+    }()
 
     private var header: some View {
         HStack(spacing: 12) {

@@ -675,7 +675,7 @@ private struct OriginalTextEditor: NSViewRepresentable {
         scrollView.hasHorizontalScroller = false
         scrollView.autohidesScrollers = true
 
-        let textView = OptionReturnTextView()
+        let textView = CommandReturnTextView()
         textView.delegate = context.coordinator
         textView.string = text
         textView.isRichText = false
@@ -690,7 +690,7 @@ private struct OriginalTextEditor: NSViewRepresentable {
         textView.textColor = NSColor.labelColor
         textView.textContainerInset = NSSize(width: 8, height: 8)
         textView.textContainer?.widthTracksTextView = true
-        textView.onOptionReturn = {
+        textView.onCommandReturn = {
             context.coordinator.translate()
         }
         scrollView.documentView = textView
@@ -700,14 +700,14 @@ private struct OriginalTextEditor: NSViewRepresentable {
 
     func updateNSView(_ scrollView: NSScrollView, context: Context) {
         context.coordinator.parent = self
-        guard let textView = scrollView.documentView as? OptionReturnTextView else { return }
+        guard let textView = scrollView.documentView as? CommandReturnTextView else { return }
 
         if textView.string != text {
             textView.string = text
         }
         textView.isEditable = !isDisabled
         textView.isSelectable = true
-        textView.onOptionReturn = {
+        textView.onCommandReturn = {
             context.coordinator.translate()
         }
     }
@@ -737,15 +737,15 @@ private struct OriginalTextEditor: NSViewRepresentable {
         }
     }
 
-    final class OptionReturnTextView: NSTextView {
-        var onOptionReturn: (() -> Void)?
+    final class CommandReturnTextView: NSTextView {
+        var onCommandReturn: (() -> Void)?
 
         override func keyDown(with event: NSEvent) {
             let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
             let isReturnKey = event.keyCode == UInt16(kVK_Return) ||
                 event.keyCode == UInt16(kVK_ANSI_KeypadEnter)
-            if flags.contains(.option), isReturnKey {
-                onOptionReturn?()
+            if flags.contains(.command), isReturnKey {
+                onCommandReturn?()
                 return
             }
 

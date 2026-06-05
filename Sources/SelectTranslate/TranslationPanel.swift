@@ -63,6 +63,22 @@ final class TranslationPanelModel: ObservableObject {
         translationProvider = provider
     }
 
+    func updateSourceTextFromUser(_ text: String) {
+        guard sourceText != text else { return }
+
+        sourceText = text
+        translatedText = ""
+        message = ""
+        directionLabel = ""
+        title = "SelectTranslate"
+        backTranslatedText = ""
+        backTranslationMessage = ""
+        isBackTranslating = false
+        isBackTranslationError = false
+        isError = false
+        canBackTranslate = false
+    }
+
     private func refreshPlamoReadiness() {
         isPlamoReady = PlamoSetupService.isSetupComplete
         if !isPlamoReady, translationProvider == .plamo {
@@ -196,11 +212,7 @@ final class TranslationPanelController {
     }
 
     func showReady(isAccessibilityTrusted: Bool) {
-        model.sourceText = """
-        1. Select text in any app.
-        2. Press Control + F.
-        3. The original and translation will appear here.
-        """
+        model.sourceText = ""
 
         if isAccessibilityTrusted {
             model.translatedText = "Ready. Accessibility permission is enabled."
@@ -429,7 +441,7 @@ private struct TranslationOverlayView: View {
 
     private var translationBody: some View {
         HStack(alignment: .top, spacing: 12) {
-            simpleTextPane(title: "Original", text: model.sourceText, placeholder: "")
+            originalPane
             translationPane
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -437,8 +449,24 @@ private struct TranslationOverlayView: View {
 
     private var errorBody: some View {
         HStack(alignment: .top, spacing: 12) {
-            simpleTextPane(title: "Original", text: model.sourceText, placeholder: "")
+            originalPane
             simpleTextPane(title: "Details", text: model.message, placeholder: "")
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    private var originalPane: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Text("Original")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                Spacer()
+            }
+            .frame(height: 28)
+
+            editableTextBox(placeholder: "")
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
@@ -548,6 +576,37 @@ private struct TranslationOverlayView: View {
                 RoundedRectangle(cornerRadius: 8)
                     .stroke(Color(nsColor: .separatorColor), lineWidth: 1)
             )
+    }
+
+    private func editableTextBox(placeholder: String) -> some View {
+        ZStack(alignment: .topLeading) {
+            TextEditor(
+                text: Binding(
+                    get: { model.sourceText },
+                    set: { model.updateSourceTextFromUser($0) }
+                )
+            )
+            .font(.system(size: 15))
+            .scrollContentBackground(.hidden)
+            .padding(8)
+            .disabled(model.isLoading || model.isBackTranslating)
+
+            if model.sourceText.isEmpty, !placeholder.isEmpty {
+                Text(placeholder)
+                    .font(.system(size: 15))
+                    .foregroundStyle(.secondary)
+                    .padding(12)
+                    .allowsHitTesting(false)
+            }
+        }
+        .background(
+            RoundedRectangle(cornerRadius: 8)
+                .fill(Color(nsColor: .textBackgroundColor).opacity(0.82))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 8)
+                .stroke(Color(nsColor: .separatorColor), lineWidth: 1)
+        )
     }
 
     private func scrollText(text: String, placeholder: String, isError: Bool) -> some View {

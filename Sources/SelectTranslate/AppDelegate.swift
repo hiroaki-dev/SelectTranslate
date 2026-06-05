@@ -5,6 +5,7 @@ import Carbon
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private let selectionReader = SelectionReader()
     private let translator = CodexTranslationService()
+    private let historyStore = TranslationHistoryStore()
     private let panelController = TranslationPanelController()
     private let settingsWindowController = SettingsWindowController()
 
@@ -463,12 +464,45 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 provider: provider,
                 shortcutProfile: request.shortcutProfile
             )
+            recordTranslationHistory(
+                request: request,
+                translatedText: translatedText,
+                provider: provider,
+                effort: effort
+            )
         } catch {
             panelController.showError(
                 source: request.sourceText,
                 title: "Translation Failed",
                 message: error.localizedDescription
             )
+        }
+    }
+
+    private func recordTranslationHistory(
+        request: TranslationRequest,
+        translatedText: String,
+        provider: TranslationProvider,
+        effort: ReasoningEffort
+    ) {
+        historyStore.insert(
+            originalText: request.sourceText,
+            translatedText: translatedText,
+            engineLabel: historyEngineLabel(provider: provider, effort: effort),
+            providerRawValue: provider.rawValue,
+            directionLabel: request.direction.label
+        )
+    }
+
+    private func historyEngineLabel(provider: TranslationProvider, effort: ReasoningEffort) -> String {
+        switch provider {
+        case .codex:
+            return "Codex"
+        case .plamo:
+            return "PLaMo"
+        case .openAICompatible:
+            let model = OpenAICompatibleSettings.model
+            return model.isEmpty ? "API" : "API: \(model)"
         }
     }
 

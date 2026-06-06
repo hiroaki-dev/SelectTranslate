@@ -364,7 +364,7 @@ final class TranslationPanelController {
         panel.collectionBehavior = [.fullScreenAuxiliary]
         panel.backgroundColor = .clear
         panel.isReleasedWhenClosed = false
-        panel.contentView = NSHostingView(
+        panel.contentView = FirstMouseHostingView(
             rootView: TranslationOverlayView(
                 model: model,
                 effortChanged: { [weak self] effort in
@@ -389,6 +389,12 @@ final class TranslationPanelController {
         )
 
         return panel
+    }
+}
+
+private final class FirstMouseHostingView<Content: View>: NSHostingView<Content> {
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool {
+        true
     }
 }
 
@@ -479,6 +485,7 @@ private struct TranslationOverlayView: View {
             }
             .padding(8)
             .frame(maxWidth: .infinity, alignment: .leading)
+            .contentShape(Rectangle())
             .background(
                 RoundedRectangle(cornerRadius: 8)
                     .fill(model.selectedHistoryID == item.id ? Color.accentColor.opacity(0.2) : Color.clear)

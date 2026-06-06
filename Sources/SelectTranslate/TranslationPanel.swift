@@ -364,7 +364,7 @@ final class TranslationPanelController {
         panel.collectionBehavior = [.fullScreenAuxiliary]
         panel.backgroundColor = .clear
         panel.isReleasedWhenClosed = false
-        panel.contentView = FirstMouseHostingView(
+        panel.contentView = NSHostingView(
             rootView: TranslationOverlayView(
                 model: model,
                 effortChanged: { [weak self] effort in
@@ -389,12 +389,6 @@ final class TranslationPanelController {
         )
 
         return panel
-    }
-}
-
-private final class FirstMouseHostingView<Content: View>: NSHostingView<Content> {
-    override func acceptsFirstMouse(for event: NSEvent?) -> Bool {
-        true
     }
 }
 

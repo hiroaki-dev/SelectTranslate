@@ -471,45 +471,49 @@ private struct SettingsView: View {
 
                 Spacer()
 
-                Button("Prepare PLaMo") {
-                    model.preparePlamo()
+                if model.translationProvider == .plamo || !model.isPlamoReady {
+                    Button("Prepare PLaMo") {
+                        model.preparePlamo()
+                    }
+                    .disabled(model.isPreparingPlamo || model.isPlamoReady)
                 }
-                .disabled(model.isPreparingPlamo || model.isPlamoReady)
             }
 
-            Text(model.plamoStatusMessage)
-                .font(.system(size: 12))
-                .foregroundStyle(model.isPlamoStatusError ? .red : .secondary)
-                .fixedSize(horizontal: false, vertical: true)
-
-            VStack(alignment: .leading, spacing: 4) {
-                Text("Built with PLaMo")
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundStyle(.secondary)
-                Text("PLaMo is governed by the PLaMo community license. PLaMo ignores shortcut prompt templates and uses the selected text directly.")
+            if model.translationProvider == .plamo {
+                Text(model.plamoStatusMessage)
                     .font(.system(size: 12))
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(model.isPlamoStatusError ? .red : .secondary)
                     .fixedSize(horizontal: false, vertical: true)
-            }
 
-            if !model.plamoStatusLog.isEmpty {
-                ScrollView {
-                    Text(model.plamoStatusLog)
-                        .font(.system(size: 11, design: .monospaced))
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Built with PLaMo")
+                        .font(.system(size: 12, weight: .semibold))
                         .foregroundStyle(.secondary)
-                        .textSelection(.enabled)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(8)
+                    Text("PLaMo is governed by the PLaMo community license. PLaMo ignores shortcut prompt templates and uses the selected text directly.")
+                        .font(.system(size: 12))
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
-                .frame(height: 120)
-                .background(
-                    RoundedRectangle(cornerRadius: 8)
-                        .fill(Color(nsColor: .textBackgroundColor).opacity(0.82))
-                )
-                .overlay(
-                    RoundedRectangle(cornerRadius: 8)
-                        .stroke(Color(nsColor: .separatorColor), lineWidth: 1)
-                )
+
+                if !model.plamoStatusLog.isEmpty {
+                    ScrollView {
+                        Text(model.plamoStatusLog)
+                            .font(.system(size: 11, design: .monospaced))
+                            .foregroundStyle(.secondary)
+                            .textSelection(.enabled)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(8)
+                    }
+                    .frame(height: 120)
+                    .background(
+                        RoundedRectangle(cornerRadius: 8)
+                            .fill(Color(nsColor: .textBackgroundColor).opacity(0.82))
+                    )
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 8)
+                            .stroke(Color(nsColor: .separatorColor), lineWidth: 1)
+                    )
+                }
             }
         }
     }

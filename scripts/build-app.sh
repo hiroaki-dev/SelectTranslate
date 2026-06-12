@@ -33,9 +33,9 @@ cat > "$CONTENTS_DIR/Info.plist" <<'PLIST'
   <key>CFBundlePackageType</key>
   <string>APPL</string>
   <key>CFBundleShortVersionString</key>
-  <string>0.1.1</string>
+  <string>0.1.2</string>
   <key>CFBundleVersion</key>
-  <string>2</string>
+  <string>3</string>
   <key>LSMinimumSystemVersion</key>
   <string>13.0</string>
   <key>NSHighResolutionCapable</key>
@@ -47,5 +47,13 @@ PLIST
 cat > "$CONTENTS_DIR/PkgInfo" <<'PKGINFO'
 APPL????
 PKGINFO
+
+codesign \
+  --force \
+  --deep \
+  --sign - \
+  --identifier local.SelectTranslate \
+  "$APP_DIR"
+codesign --verify --deep --strict --verbose=2 "$APP_DIR"
 
 printf '%s\n' "$APP_DIR"

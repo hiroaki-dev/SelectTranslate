@@ -19,6 +19,16 @@ open build/SelectTranslate.app
 
 This launches SelectTranslate as a regular macOS app with a Dock icon and normal application menu.
 
+## Build a Shareable Zip
+
+```sh
+./scripts/build-share-zip.sh
+```
+
+This creates `SelectTranslate.zip` at the repository root. The script builds the app, applies an ad-hoc signature, removes local extended attributes, zips the `.app`, extracts it to a temporary directory, verifies the signature again, and prints the SHA-256 digest.
+
+The zip is not signed with an Apple Developer ID and is not notarized. macOS may require right-click > Open, or approval in System Settings > Privacy & Security, on first launch.
+
 ## Local run
 
 ```sh

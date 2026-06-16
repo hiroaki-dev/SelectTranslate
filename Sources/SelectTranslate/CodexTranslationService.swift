@@ -107,6 +107,8 @@ enum TranslationServiceError: LocalizedError {
     }
 }
 
+typealias TranslationProgressHandler = @MainActor @Sendable (String) -> Void
+
 final class CodexTranslationService {
     private static let minimumPlamoMaxTokens = 1024
     private static let maximumPlamoMaxTokens = 8192
@@ -122,15 +124,21 @@ final class CodexTranslationService {
         direction: TranslationDirection,
         effort: ReasoningEffort,
         provider: TranslationProvider,
-        promptTemplate: String
+        promptTemplate: String,
+        onPartialResult: @escaping TranslationProgressHandler = { _ in }
     ) async throws -> String {
         switch provider {
         case .codex:
             return try await translateWithCodex(text, direction: direction, effort: effort, promptTemplate: promptTemplate)
         case .plamo:
-            return try await translateWithPlamo(text)
+            return try await translateWithPlamo(text, onPartialResult: onPartialResult)
         case .openAICompatible:
-            return try await translateWithOpenAICompatibleAPI(text, direction: direction, promptTemplate: promptTemplate)
+            return try await translateWithOpenAICompatibleAPI(
+                text,
+                direction: direction,
+                promptTemplate: promptTemplate,
+                onPartialResult: onPartialResult
+            )
         }
     }
 
@@ -222,7 +230,10 @@ final class CodexTranslationService {
         }.value
     }
 
-    private func translateWithPlamo(_ text: String) async throws -> String {
+    private func translateWithPlamo(
+        _ text: String,
+        onPartialResult: @escaping TranslationProgressHandler
+    ) async throws -> String {
         try await Task.detached(priority: .userInitiated) { [workspaceURL] in
             guard PlamoSetupService.isSetupComplete else {
                 throw TranslationServiceError.providerNotReady(
@@ -257,14 +268,40 @@ final class CodexTranslationService {
             process.standardOutput = stdout
             process.standardError = stderr
 
+            let outputCollector = LockedProcessOutput()
+            let partialState = LockedLatestText()
+
+            stdout.fileHandleForReading.readabilityHandler = { handle in
+                let data = handle.availableData
+                guard !data.isEmpty else { return }
+
+                let stdoutText = outputCollector.appendStdout(data)
+                let partial = Self.parsePlamoOutput(stdoutText, sourceText: text)
+                guard !partial.isEmpty else { return }
+
+                if partialState.updateIfChanged(partial) {
+                    Task {
+                        await onPartialResult(partial)
+                    }
+                }
+            }
+            stderr.fileHandleForReading.readabilityHandler = { handle in
+                let data = handle.availableData
+                guard !data.isEmpty else { return }
+                outputCollector.appendStderr(data)
+            }
+
             try process.run()
 
-            let stdoutData = stdout.fileHandleForReading.readDataToEndOfFile()
-            let stderrData = stderr.fileHandleForReading.readDataToEndOfFile()
             process.waitUntilExit()
+            stdout.fileHandleForReading.readabilityHandler = nil
+            stderr.fileHandleForReading.readabilityHandler = nil
 
-            let stdoutText = String(data: stdoutData, encoding: .utf8) ?? ""
-            let stderrText = String(data: stderrData, encoding: .utf8) ?? ""
+            outputCollector.appendStdout(stdout.fileHandleForReading.readDataToEndOfFile())
+            outputCollector.appendStderr(stderr.fileHandleForReading.readDataToEndOfFile())
+
+            let stdoutText = outputCollector.stdoutText
+            let stderrText = outputCollector.stderrText
             let combinedOutput = [stderrText, stdoutText]
                 .filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
                 .joined(separator: "\n")
@@ -292,6 +329,7 @@ final class CodexTranslationService {
                 throw TranslationServiceError.emptyResponse(provider: .plamo)
             }
 
+            await onPartialResult(translated)
             return translated
         }.value
     }
@@ -299,7 +337,8 @@ final class CodexTranslationService {
     private func translateWithOpenAICompatibleAPI(
         _ text: String,
         direction: TranslationDirection,
-        promptTemplate: String
+        promptTemplate: String,
+        onPartialResult: @escaping TranslationProgressHandler
     ) async throws -> String {
         let configuration = OpenAICompatibleConfiguration.current()
         guard !configuration.baseURL.isEmpty else {
@@ -350,11 +389,12 @@ final class CodexTranslationService {
                             direction: direction
                         )
                     )
-                ]
+                ],
+                stream: true
             )
         )
 
-        let (data, response) = try await URLSession.shared.data(for: request)
+        let (bytes, response) = try await URLSession.shared.bytes(for: request)
         guard let httpResponse = response as? HTTPURLResponse else {
             throw TranslationServiceError.invalidResponse(
                 provider: .openAICompatible,
@@ -362,8 +402,12 @@ final class CodexTranslationService {
             )
         }
 
-        let responseText = String(data: data, encoding: .utf8) ?? ""
         guard (200..<300).contains(httpResponse.statusCode) else {
+            var responseText = ""
+            for try await line in bytes.lines {
+                responseText += line
+                responseText += "\n"
+            }
             throw TranslationServiceError.requestFailed(
                 provider: .openAICompatible,
                 status: httpResponse.statusCode,
@@ -371,19 +415,21 @@ final class CodexTranslationService {
             )
         }
 
-        let decodedResponse: OpenAIChatCompletionResponse
-        do {
-            decodedResponse = try JSONDecoder().decode(OpenAIChatCompletionResponse.self, from: data)
-        } catch {
-            throw TranslationServiceError.invalidResponse(
-                provider: .openAICompatible,
-                message: error.localizedDescription
-            )
+        var accumulatedText = ""
+        for try await line in bytes.lines {
+            guard let delta = try Self.parseOpenAIStreamLine(line) else {
+                continue
+            }
+
+            accumulatedText += delta
+            let partial = accumulatedText.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !partial.isEmpty {
+                await onPartialResult(partial)
+            }
         }
 
-        guard let translated = decodedResponse.choices.first?.message.content
-            .trimmingCharacters(in: .whitespacesAndNewlines),
-              !translated.isEmpty else {
+        let translated = accumulatedText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !translated.isEmpty else {
             throw TranslationServiceError.emptyResponse(provider: .openAICompatible)
         }
 
@@ -419,6 +465,38 @@ final class CodexTranslationService {
         }
 
         return removeSourceEcho(cleanPlamoContentLines(lines), sourceText: sourceText)
+    }
+
+    private static func parseOpenAIStreamLine(_ line: String) throws -> String? {
+        let trimmedLine = line.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard trimmedLine.hasPrefix("data:") else {
+            return nil
+        }
+
+        let payload = trimmedLine
+            .dropFirst("data:".count)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !payload.isEmpty, payload != "[DONE]" else {
+            return nil
+        }
+
+        do {
+            let response = try JSONDecoder().decode(
+                OpenAIChatCompletionStreamResponse.self,
+                from: Data(payload.utf8)
+            )
+            if let message = response.error?.message, !message.isEmpty {
+                throw TranslationServiceError.invalidResponse(provider: .openAICompatible, message: message)
+            }
+            return response.choices?.compactMap { $0.delta?.content }.joined()
+        } catch let error as TranslationServiceError {
+            throw error
+        } catch {
+            throw TranslationServiceError.invalidResponse(
+                provider: .openAICompatible,
+                message: error.localizedDescription
+            )
+        }
     }
 
     private static func plamoMaxTokens(for text: String) -> Int {
@@ -471,6 +549,62 @@ final class CodexTranslationService {
     }
 }
 
+private final class LockedProcessOutput: @unchecked Sendable {
+    private let lock = NSLock()
+    private var stdoutBuffer = ""
+    private var stderrBuffer = ""
+
+    var stdoutText: String {
+        lock.lock()
+        defer { lock.unlock() }
+        return stdoutBuffer
+    }
+
+    var stderrText: String {
+        lock.lock()
+        defer { lock.unlock() }
+        return stderrBuffer
+    }
+
+    @discardableResult
+    func appendStdout(_ data: Data) -> String {
+        append(data, to: \.stdoutBuffer)
+    }
+
+    @discardableResult
+    func appendStderr(_ data: Data) -> String {
+        append(data, to: \.stderrBuffer)
+    }
+
+    private func append(_ data: Data, to keyPath: ReferenceWritableKeyPath<LockedProcessOutput, String>) -> String {
+        let chunk = String(data: data, encoding: .utf8) ?? ""
+        lock.lock()
+        if !data.isEmpty {
+            self[keyPath: keyPath] += chunk
+        }
+        let text = self[keyPath: keyPath]
+        lock.unlock()
+        return text
+    }
+}
+
+private final class LockedLatestText: @unchecked Sendable {
+    private let lock = NSLock()
+    private var text = ""
+
+    func updateIfChanged(_ newText: String) -> Bool {
+        lock.lock()
+        defer { lock.unlock() }
+
+        guard newText != text else {
+            return false
+        }
+
+        text = newText
+        return true
+    }
+}
+
 private struct OpenAICompatibleConfiguration {
     let baseURL: String
     let apiKey: String
@@ -512,16 +646,22 @@ private struct OpenAIChatCompletionRequest: Encodable {
 
     let model: String
     let messages: [Message]
+    let stream: Bool
 }
 
-private struct OpenAIChatCompletionResponse: Decodable {
-    struct Choice: Decodable {
-        struct Message: Decodable {
-            let content: String
-        }
-
-        let message: Message
+private struct OpenAIChatCompletionStreamResponse: Decodable {
+    struct APIError: Decodable {
+        let message: String?
     }
 
-    let choices: [Choice]
+    struct Choice: Decodable {
+        struct Delta: Decodable {
+            let content: String?
+        }
+
+        let delta: Delta?
+    }
+
+    let choices: [Choice]?
+    let error: APIError?
 }

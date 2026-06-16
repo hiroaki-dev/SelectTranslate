@@ -40,6 +40,8 @@ The app first reads selected text through Accessibility without touching the cli
 
 Use the `Engine` segmented control in the panel or `SelectTranslate` > `Settings...` to switch between `Codex`, `PLaMo`, and `API`. PLaMo cannot be selected until `Prepare PLaMo` has completed in Settings. When a translation is already displayed, changing the engine reruns that same source text. The app saves the selected value.
 
+PLaMo and API translations stream partial output into the translation pane while generation is running. Codex translations are shown when `codex exec` returns its final message.
+
 Use the `Effort` segmented control in the panel to choose the Codex reasoning effort. It is shown only for the Codex engine. When a Codex translation is already displayed, changing the effort reruns that same source text. The app saves the selected value.
 
 Use the retranslation button in the `Translation` header to translate the current translation back to the original language. The back translation appears at the bottom of the `Translation` area.

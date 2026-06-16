@@ -452,7 +452,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 direction: request.direction,
                 effort: effort,
                 provider: provider,
-                promptTemplate: request.shortcutProfile.normalizedPromptTemplate
+                promptTemplate: request.shortcutProfile.normalizedPromptTemplate,
+                onPartialResult: { [weak self] partialText in
+                    self?.panelController.showStreamingTranslation(partialText)
+                }
             )
             translationCache[cacheKey] = translatedText
             currentTranslationResult = TranslationResult(
@@ -539,7 +542,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 direction: result.direction.reversed,
                 effort: effort,
                 provider: provider,
-                promptTemplate: result.shortcutProfile.normalizedPromptTemplate
+                promptTemplate: result.shortcutProfile.normalizedPromptTemplate,
+                onPartialResult: { [weak self] partialText in
+                    self?.panelController.showStreamingBackTranslation(partialText)
+                }
             )
             translationCache[cacheKey] = backTranslatedText
             panelController.showBackTranslationResult(backTranslatedText)

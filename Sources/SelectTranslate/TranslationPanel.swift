@@ -218,6 +218,13 @@ final class TranslationPanelController {
         showPanel()
     }
 
+    func showStreamingTranslation(_ text: String) {
+        guard model.isLoading else { return }
+        model.translatedText = text
+        model.message = ""
+        model.isError = false
+    }
+
     func showError(source: String?, title: String, message: String) {
         model.sourceText = source ?? ""
         model.translatedText = ""
@@ -256,6 +263,13 @@ final class TranslationPanelController {
         model.isBackTranslating = true
         model.isBackTranslationError = false
         showPanel()
+    }
+
+    func showStreamingBackTranslation(_ text: String) {
+        guard model.isBackTranslating else { return }
+        model.backTranslatedText = text
+        model.backTranslationMessage = ""
+        model.isBackTranslationError = false
     }
 
     func showBackTranslationResult(_ text: String) {

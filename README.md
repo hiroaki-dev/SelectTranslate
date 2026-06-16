@@ -107,8 +107,10 @@ For manual setup, you can run:
 After setup, the app runs:
 
 ```sh
-~/Library/Application\ Support/SelectTranslate/PLaMoEnvironment/bin/python3 -m mlx_lm generate --model mlx-community/plamo-2-translate --trust-remote-code --extra-eos-token '<|plamo:op|>' --prompt '<selected text>'
+~/Library/Application\ Support/SelectTranslate/PLaMoEnvironment/bin/python3 -m mlx_lm generate --model mlx-community/plamo-2-translate --trust-remote-code --extra-eos-token '<|plamo:op|>' --max-tokens <dynamic limit> --prompt '<selected text>'
 ```
+
+SelectTranslate sets the PLaMo generation limit from the source text length, with a minimum of 1024 tokens and a maximum of 8192 tokens. This avoids the `mlx_lm generate` default limit, which is too small for longer translations.
 
 PLaMo is a translation-specialized model and is not instruction-tuned for chat, so the app sends the selected text directly. Shortcut prompt templates are used by Codex and API, but ignored by PLaMo.
 

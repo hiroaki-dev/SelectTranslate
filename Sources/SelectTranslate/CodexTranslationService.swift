@@ -108,6 +108,9 @@ enum TranslationServiceError: LocalizedError {
 }
 
 final class CodexTranslationService {
+    private static let minimumPlamoMaxTokens = 1024
+    private static let maximumPlamoMaxTokens = 8192
+
     private let workspaceURL: URL
 
     init(workspaceURL: URL = CodexTranslationService.defaultWorkspaceURL()) {
@@ -242,6 +245,8 @@ final class CodexTranslationService {
                 "--trust-remote-code",
                 "--extra-eos-token",
                 PlamoSetupService.extraEOSToken,
+                "--max-tokens",
+                "\(Self.plamoMaxTokens(for: text))",
                 "--prompt",
                 text
             ]
@@ -414,6 +419,14 @@ final class CodexTranslationService {
         }
 
         return removeSourceEcho(cleanPlamoContentLines(lines), sourceText: sourceText)
+    }
+
+    private static func plamoMaxTokens(for text: String) -> Int {
+        let nonWhitespaceScalarCount = text.unicodeScalars.filter { scalar in
+            !CharacterSet.whitespacesAndNewlines.contains(scalar)
+        }.count
+        let estimatedTokenLimit = max(minimumPlamoMaxTokens, nonWhitespaceScalarCount * 2)
+        return min(maximumPlamoMaxTokens, estimatedTokenLimit)
     }
 
     private static func cleanPlamoContentLines(_ lines: [String]) -> String {

@@ -41,7 +41,20 @@ enum AppPaths {
 
     static func processEnvironment(workingDirectory: String) -> [String: String] {
         var environment = ProcessInfo.processInfo.environment
-        let fallbackPath = "/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
+        let homeLocalBin = FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent(".local", isDirectory: true)
+            .appendingPathComponent("bin", isDirectory: true)
+            .path
+        let fallbackPath = [
+            "/opt/homebrew/bin",
+            "/usr/local/bin",
+            "/usr/bin",
+            "/bin",
+            "/usr/sbin",
+            "/sbin",
+            homeLocalBin,
+            "/Applications/cmux.app/Contents/Resources/bin"
+        ].joined(separator: ":")
         if let existingPath = environment["PATH"], !existingPath.isEmpty {
             environment["PATH"] = "\(existingPath):\(fallbackPath)"
         } else {

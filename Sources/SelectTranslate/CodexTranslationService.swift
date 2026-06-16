@@ -130,6 +130,8 @@ final class CodexTranslationService {
         switch provider {
         case .codex:
             return try await translateWithCodex(text, direction: direction, effort: effort, promptTemplate: promptTemplate)
+        case .claude:
+            return try await translateWithClaude(text, direction: direction, effort: effort, promptTemplate: promptTemplate)
         case .plamo:
             return try await translateWithPlamo(text, onPartialResult: onPartialResult)
         case .openAICompatible:
@@ -224,6 +226,84 @@ final class CodexTranslationService {
 
             guard !translated.isEmpty else {
                 throw TranslationServiceError.emptyResponse(provider: .codex)
+            }
+
+            return translated
+        }.value
+    }
+
+    private func translateWithClaude(
+        _ text: String,
+        direction: TranslationDirection,
+        effort: ReasoningEffort,
+        promptTemplate: String
+    ) async throws -> String {
+        let model = ClaudeSettings.model
+        return try await Task.detached(priority: .userInitiated) { [workspaceURL, effort, model, promptTemplate] in
+            try FileManager.default.createDirectory(at: workspaceURL, withIntermediateDirectories: true)
+
+            let prompt = PromptSettings.render(template: promptTemplate, text: text, direction: direction)
+            let process = Process()
+            process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
+            process.currentDirectoryURL = workspaceURL
+            process.arguments = [
+                "claude",
+                "-p",
+                "--safe-mode",
+                "--no-session-persistence",
+                "--output-format",
+                "text"
+            ]
+            if !model.isEmpty {
+                process.arguments?.append(contentsOf: ["--model", model])
+            }
+            process.arguments?.append(contentsOf: ["--effort", effort.rawValue])
+            process.environment = Self.processEnvironment(workingDirectory: workspaceURL.path)
+
+            let input = Pipe()
+            let stdout = Pipe()
+            let stderr = Pipe()
+            process.standardInput = input
+            process.standardOutput = stdout
+            process.standardError = stderr
+
+            try process.run()
+            if let data = prompt.data(using: .utf8) {
+                input.fileHandleForWriting.write(data)
+            }
+            input.fileHandleForWriting.closeFile()
+
+            let stdoutData = stdout.fileHandleForReading.readDataToEndOfFile()
+            let stderrData = stderr.fileHandleForReading.readDataToEndOfFile()
+            process.waitUntilExit()
+
+            let stdoutText = String(data: stdoutData, encoding: .utf8) ?? ""
+            let stderrText = String(data: stderrData, encoding: .utf8) ?? ""
+            let combinedOutput = [stderrText, stdoutText]
+                .filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+                .joined(separator: "\n")
+
+            if process.terminationStatus != 0 {
+                throw TranslationServiceError.commandFailed(
+                    provider: .claude,
+                    commandName: "claude -p",
+                    status: process.terminationStatus,
+                    output: combinedOutput
+                )
+            }
+
+            let translated = stdoutText.trimmingCharacters(in: .whitespacesAndNewlines)
+            if translated.localizedCaseInsensitiveContains("ERROR:") {
+                throw TranslationServiceError.commandFailed(
+                    provider: .claude,
+                    commandName: "claude -p",
+                    status: process.terminationStatus,
+                    output: translated
+                )
+            }
+
+            guard !translated.isEmpty else {
+                throw TranslationServiceError.emptyResponse(provider: .claude)
             }
 
             return translated

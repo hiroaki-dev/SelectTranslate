@@ -63,6 +63,11 @@ private final class SettingsModel: ObservableObject {
             OpenAICompatibleSettings.model = apiModel
         }
     }
+    @Published var claudeModel: String {
+        didSet {
+            ClaudeSettings.model = claudeModel
+        }
+    }
     @Published var isAPIKeyVisible: Bool = false
     @Published var isPlamoReady: Bool
     @Published var isPreparingPlamo: Bool = false
@@ -86,6 +91,7 @@ private final class SettingsModel: ObservableObject {
         apiBaseURL = OpenAICompatibleSettings.baseURL
         apiKey = OpenAICompatibleSettings.apiKey
         apiModel = OpenAICompatibleSettings.model
+        claudeModel = ClaudeSettings.model
         let plamoReady = PlamoSetupService.isSetupComplete
         isPlamoReady = plamoReady
         translationProvider = TranslationPreferences.translationProvider
@@ -191,6 +197,13 @@ private final class SettingsModel: ObservableObject {
         case .codex:
             TranslationPreferences.translationProvider = .codex
             translationProvider = .codex
+            isPlamoStatusError = false
+            plamoStatusMessage = isPlamoReady
+                ? "PLaMo is ready."
+                : "PLaMo setup is not installed yet."
+        case .claude:
+            TranslationPreferences.translationProvider = .claude
+            translationProvider = .claude
             isPlamoStatusError = false
             plamoStatusMessage = isPlamoReady
                 ? "PLaMo is ready."
@@ -439,6 +452,11 @@ private struct SettingsView: View {
                     Divider()
                     apiSection
                 }
+
+                if model.translationProvider == .claude {
+                    Divider()
+                    claudeSection
+                }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
         }
@@ -461,7 +479,7 @@ private struct SettingsView: View {
                     ),
                     isPlamoReady: model.isPlamoReady,
                     isDisabled: model.isPreparingPlamo,
-                    width: 270
+                    width: 360
                 )
 
                 if model.isPreparingPlamo {
@@ -760,6 +778,29 @@ private struct SettingsView: View {
                         .foregroundStyle(.secondary)
                         .frame(width: 72, alignment: .leading)
                     TextField("Enter the model name", text: $model.apiModel)
+                        .textFieldStyle(.roundedBorder)
+                }
+            }
+        }
+    }
+
+    private var claudeSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Claude")
+                    .font(.system(size: 14, weight: .semibold))
+                Text("Uses claude -p. Leave model blank to use the Claude CLI default.")
+                    .font(.system(size: 12))
+                    .foregroundStyle(.secondary)
+            }
+
+            Grid(alignment: .leadingFirstTextBaseline, horizontalSpacing: 12, verticalSpacing: 8) {
+                GridRow {
+                    Text("model")
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundStyle(.secondary)
+                        .frame(width: 72, alignment: .leading)
+                    TextField("Enter the model name", text: $model.claudeModel)
                         .textFieldStyle(.roundedBorder)
                 }
             }

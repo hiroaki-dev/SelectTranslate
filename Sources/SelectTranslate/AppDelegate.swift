@@ -21,7 +21,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.regular)
         panelController.onReasoningEffortChanged = { [weak self] effort in
-            self?.startSourceRetranslation(effort: effort, provider: .codex)
+            guard let self else { return }
+            self.startSourceRetranslation(effort: effort, provider: self.panelController.translationProvider)
         }
         panelController.onTranslationProviderChanged = { [weak self] provider in
             self?.startProviderChange(provider)
@@ -521,6 +522,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         switch provider {
         case .codex:
             return "Codex"
+        case .claude:
+            let model = ClaudeSettings.model
+            return model.isEmpty ? "Claude" : "Claude: \(model)"
         case .plamo:
             return "PLaMo"
         case .openAICompatible:
@@ -636,6 +640,7 @@ private struct TranslationCacheKey: Hashable {
     let promptTemplate: String
     let apiBaseURL: String
     let apiModel: String
+    let claudeModel: String
 
     init(request: TranslationRequest, effort: ReasoningEffort, provider: TranslationProvider) {
         self.init(
@@ -671,7 +676,7 @@ private struct TranslationCacheKey: Hashable {
         self.sourceText = sourceText
         self.direction = direction
         self.provider = provider
-        self.effort = provider == .codex ? effort : .low
+        self.effort = provider == .codex || provider == .claude ? effort : .low
         shortcutProfileID = shortcutProfile.id
         promptTemplate = provider == .plamo ? "" : shortcutProfile.normalizedPromptTemplate
 
@@ -682,5 +687,7 @@ private struct TranslationCacheKey: Hashable {
             apiBaseURL = ""
             apiModel = ""
         }
+
+        claudeModel = provider == .claude ? ClaudeSettings.model : ""
     }
 }

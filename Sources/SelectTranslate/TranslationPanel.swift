@@ -550,7 +550,7 @@ private struct TranslationOverlayView: View {
         VStack(alignment: .leading, spacing: 8) {
             providerPicker
 
-            if model.translationProvider == .codex {
+            if model.translationProvider == .codex || model.translationProvider == .claude {
                 effortPicker
             }
         }
@@ -571,7 +571,7 @@ private struct TranslationOverlayView: View {
                 ),
                 isPlamoReady: model.isPlamoReady,
                 isDisabled: model.isLoading || model.isBackTranslating,
-                width: 198
+                width: 272
             )
         }
     }
@@ -592,8 +592,12 @@ private struct TranslationOverlayView: View {
             .pickerStyle(.segmented)
             .labelsHidden()
             .frame(width: 250)
-            .disabled(model.isLoading || model.isBackTranslating || model.translationProvider != .codex)
-            .help("Reasoning effort passed to codex exec")
+            .disabled(
+                model.isLoading ||
+                    model.isBackTranslating ||
+                    (model.translationProvider != .codex && model.translationProvider != .claude)
+            )
+            .help("Reasoning effort passed to the selected CLI engine")
         }
     }
 

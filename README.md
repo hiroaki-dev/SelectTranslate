@@ -1,12 +1,13 @@
 # SelectTranslate
 
-macOS utility app that translates selected text with `codex exec`, local PLaMo MLX, or an OpenAI-compatible chat completions API, and shows the source and translated text in a floating panel.
+macOS utility app that translates selected text with `codex exec`, `claude -p`, local PLaMo MLX, or an OpenAI-compatible chat completions API, and shows the source and translated text in a floating panel.
 
 ## Requirements
 
 - macOS 13 or later
 - Xcode command line tools or Xcode
-- Codex CLI installed and logged in
+- Codex CLI installed and logged in for the Codex engine
+- Claude CLI installed and logged in for the Claude engine
 - Optional for local PLaMo: Apple Silicon Mac and Python 3
 
 ## Build and Launch as a Mac App
@@ -38,11 +39,11 @@ Japanese text is translated to English. Text without Japanese characters is tran
 
 The app first reads selected text through Accessibility without touching the clipboard. If an app does not expose selected text through Accessibility, SelectTranslate preserves the current clipboard, sends `Command + C`, captures the selected text, and restores the previous clipboard immediately before translation starts.
 
-Use the `Engine` segmented control in the panel or `SelectTranslate` > `Settings...` to switch between `Codex`, `PLaMo`, and `API`. PLaMo cannot be selected until `Prepare PLaMo` has completed in Settings. When a translation is already displayed, changing the engine reruns that same source text. The app saves the selected value.
+Use the `Engine` segmented control in the panel or `SelectTranslate` > `Settings...` to switch between `Codex`, `Claude`, `PLaMo`, and `API`. PLaMo cannot be selected until `Prepare PLaMo` has completed in Settings. When a translation is already displayed, changing the engine reruns that same source text. The app saves the selected value.
 
-PLaMo and API translations stream partial output into the translation pane while generation is running. Codex translations are shown when `codex exec` returns its final message.
+PLaMo and API translations stream partial output into the translation pane while generation is running. Codex and Claude translations are shown when the CLI returns its final message.
 
-Use the `Effort` segmented control in the panel to choose the Codex reasoning effort. It is shown only for the Codex engine. When a Codex translation is already displayed, changing the effort reruns that same source text. The app saves the selected value.
+Use the `Effort` segmented control in the panel to choose the Codex or Claude reasoning effort. It is shown only for the Codex and Claude engines. When a CLI translation is already displayed, changing the effort reruns that same source text. The app saves the selected value.
 
 Use the retranslation button in the `Translation` header to translate the current translation back to the original language. The back translation appears at the bottom of the `Translation` area.
 
@@ -83,6 +84,22 @@ The selected panel effort is passed as:
 ```
 
 The active shortcut set's prompt template is rendered and sent to `codex exec` over stdin.
+
+## Claude command
+
+The app runs Claude with:
+
+```sh
+claude -p --safe-mode --no-session-persistence --output-format text --effort <effort>
+```
+
+If a Claude model is configured in Settings, the app also passes:
+
+```sh
+--model <model>
+```
+
+The active shortcut set's prompt template is rendered and sent to `claude -p` over stdin.
 
 ## PLaMo command
 

@@ -2,6 +2,7 @@ import Foundation
 
 enum TranslationProvider: String, CaseIterable, Identifiable, Hashable {
     case codex
+    case claude
     case plamo
     case openAICompatible
 
@@ -11,6 +12,8 @@ enum TranslationProvider: String, CaseIterable, Identifiable, Hashable {
         switch self {
         case .codex:
             return "Codex"
+        case .claude:
+            return "Claude"
         case .plamo:
             return "PLaMo"
         case .openAICompatible:
@@ -22,6 +25,8 @@ enum TranslationProvider: String, CaseIterable, Identifiable, Hashable {
         switch self {
         case .codex:
             return "codex exec"
+        case .claude:
+            return "claude -p"
         case .plamo:
             return "PLaMo MLX"
         case .openAICompatible:

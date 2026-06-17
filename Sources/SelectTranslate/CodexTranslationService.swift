@@ -150,7 +150,8 @@ final class CodexTranslationService {
         effort: ReasoningEffort,
         promptTemplate: String
     ) async throws -> String {
-        return try await Task.detached(priority: .userInitiated) { [workspaceURL, effort, promptTemplate] in
+        let model = CodexSettings.model
+        return try await Task.detached(priority: .userInitiated) { [workspaceURL, effort, model, promptTemplate] in
             try FileManager.default.createDirectory(at: workspaceURL, withIntermediateDirectories: true)
 
             let outputURL = FileManager.default.temporaryDirectory
@@ -164,11 +165,16 @@ final class CodexTranslationService {
             let process = Process()
             process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
             process.currentDirectoryURL = workspaceURL
-            process.arguments = [
+            var arguments = [
                 "codex",
                 "exec",
                 "--ignore-user-config",
                 "--skip-git-repo-check",
+            ]
+            if !model.isEmpty {
+                arguments.append(contentsOf: ["--model", model])
+            }
+            arguments.append(contentsOf: [
                 "-c",
                 "model_reasoning_effort=\"\(effort.rawValue)\"",
                 "--cd",
@@ -176,7 +182,8 @@ final class CodexTranslationService {
                 "--output-last-message",
                 outputURL.path,
                 "-"
-            ]
+            ])
+            process.arguments = arguments
             process.environment = Self.processEnvironment(workingDirectory: workspaceURL.path)
 
             let input = Pipe()

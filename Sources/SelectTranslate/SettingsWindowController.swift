@@ -48,6 +48,11 @@ private final class SettingsModel: ObservableObject {
     @Published var selectedShortcutID: String
     @Published var shortcutValidationMessage: String = ""
     @Published var translationProvider: TranslationProvider
+    @Published var codexModel: String {
+        didSet {
+            CodexSettings.model = codexModel
+        }
+    }
     @Published var apiBaseURL: String {
         didSet {
             OpenAICompatibleSettings.baseURL = apiBaseURL
@@ -88,6 +93,7 @@ private final class SettingsModel: ObservableObject {
         let loadedProfiles = PromptSettings.shortcutProfiles
         shortcutProfiles = loadedProfiles
         selectedShortcutID = loadedProfiles.first?.id ?? ShortcutProfile.defaultProfile().id
+        codexModel = CodexSettings.model
         apiBaseURL = OpenAICompatibleSettings.baseURL
         apiKey = OpenAICompatibleSettings.apiKey
         apiModel = OpenAICompatibleSettings.model
@@ -448,6 +454,11 @@ private struct SettingsView: View {
             VStack(alignment: .leading, spacing: 14) {
                 modelSection
 
+                if model.translationProvider == .codex {
+                    Divider()
+                    codexSection
+                }
+
                 if model.translationProvider == .openAICompatible {
                     Divider()
                     apiSection
@@ -778,6 +789,29 @@ private struct SettingsView: View {
                         .foregroundStyle(.secondary)
                         .frame(width: 72, alignment: .leading)
                     TextField("Enter the model name", text: $model.apiModel)
+                        .textFieldStyle(.roundedBorder)
+                }
+            }
+        }
+    }
+
+    private var codexSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Codex")
+                    .font(.system(size: 14, weight: .semibold))
+                Text("Uses codex exec. Leave model blank to use the Codex CLI default.")
+                    .font(.system(size: 12))
+                    .foregroundStyle(.secondary)
+            }
+
+            Grid(alignment: .leadingFirstTextBaseline, horizontalSpacing: 12, verticalSpacing: 8) {
+                GridRow {
+                    Text("model")
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundStyle(.secondary)
+                        .frame(width: 72, alignment: .leading)
+                    TextField("Enter the model name", text: $model.codexModel)
                         .textFieldStyle(.roundedBorder)
                 }
             }

@@ -521,7 +521,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func historyEngineLabel(provider: TranslationProvider, effort: ReasoningEffort) -> String {
         switch provider {
         case .codex:
-            return "Codex"
+            let model = CodexSettings.model
+            return model.isEmpty ? "Codex" : "Codex: \(model)"
         case .claude:
             let model = ClaudeSettings.model
             return model.isEmpty ? "Claude" : "Claude: \(model)"
@@ -638,6 +639,7 @@ private struct TranslationCacheKey: Hashable {
     let effort: ReasoningEffort
     let shortcutProfileID: String
     let promptTemplate: String
+    let codexModel: String
     let apiBaseURL: String
     let apiModel: String
     let claudeModel: String
@@ -679,6 +681,7 @@ private struct TranslationCacheKey: Hashable {
         self.effort = provider == .codex || provider == .claude ? effort : .low
         shortcutProfileID = shortcutProfile.id
         promptTemplate = provider == .plamo ? "" : shortcutProfile.normalizedPromptTemplate
+        codexModel = provider == .codex ? CodexSettings.model : ""
 
         if provider == .openAICompatible {
             apiBaseURL = OpenAICompatibleSettings.baseURL

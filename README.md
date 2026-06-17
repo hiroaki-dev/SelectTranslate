@@ -93,6 +93,12 @@ The selected panel effort is passed as:
 -c 'model_reasoning_effort="<effort>"'
 ```
 
+If a Codex model is configured in Settings, the app also passes:
+
+```sh
+--model <model>
+```
+
 The active shortcut set's prompt template is rendered and sent to `codex exec` over stdin.
 
 ## Claude command

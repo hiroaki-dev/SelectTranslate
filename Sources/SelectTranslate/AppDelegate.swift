@@ -314,6 +314,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         } catch SelectionReaderError.accessibilityPermissionRequired {
             currentTranslationRequest = nil
             currentTranslationResult = nil
+            panelController.cancelActivationOnNextShow()
             requestAccessibilityPermissionFromShortcutIfNeeded()
             scheduleAccessibilityRetryAfterGrant(
                 preferredProcessIdentifier: preferredProcessIdentifier,
@@ -322,7 +323,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             panelController.showError(
                 source: nil,
                 title: "Accessibility Permission Required",
-                message: "Allow SelectTranslate in System Settings > Privacy & Security > Accessibility. The translation will retry automatically after permission is enabled."
+                message: "Allow SelectTranslate in System Settings > Privacy & Security > Accessibility. The translation will retry automatically after permission is enabled.",
+                ordersFront: false
             )
         } catch SelectionReaderError.noSelectedText {
             currentTranslationRequest = nil

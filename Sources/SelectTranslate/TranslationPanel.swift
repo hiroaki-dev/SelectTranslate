@@ -177,6 +177,10 @@ final class TranslationPanelController {
         shouldActivateOnNextShow = true
     }
 
+    func cancelActivationOnNextShow() {
+        shouldActivateOnNextShow = false
+    }
+
     func setHistoryItems(_ items: [TranslationHistoryItem]) {
         model.setHistoryItems(items)
     }
@@ -247,7 +251,7 @@ final class TranslationPanelController {
         model.isError = false
     }
 
-    func showError(source: String?, title: String, message: String) {
+    func showError(source: String?, title: String, message: String, ordersFront: Bool = true) {
         model.sourceText = source ?? ""
         model.translatedText = ""
         model.directionLabel = ""
@@ -261,7 +265,7 @@ final class TranslationPanelController {
         model.isError = true
         model.canBackTranslate = false
         model.selectedHistoryID = nil
-        showPanel()
+        showPanel(ordersFront: ordersFront)
     }
 
     func showPreparationLoading(title: String, message: String) {
@@ -369,18 +373,20 @@ final class TranslationPanelController {
         return "\(provider.description) is translating the selected text."
     }
 
-    private func showPanel() {
+    private func showPanel(ordersFront: Bool = true) {
         let shouldCenter = panel == nil
         let panel = panel ?? makePanel()
         self.panel = panel
         if shouldCenter {
             panel.center()
         }
-        if shouldActivateOnNextShow {
+        if shouldActivateOnNextShow, ordersFront {
             shouldActivateOnNextShow = false
             NSApp.activate(ignoringOtherApps: true)
         }
-        panel.makeKeyAndOrderFront(nil)
+        if ordersFront {
+            panel.makeKeyAndOrderFront(nil)
+        }
     }
 
     private func makePanel() -> NSPanel {

@@ -314,7 +314,7 @@ final class TranslationPanelController {
         showPanel()
     }
 
-    func showReady(isAccessibilityTrusted: Bool) {
+    func showReady(isAccessibilityTrusted: Bool, ordersFront: Bool = true) {
         model.sourceText = ""
 
         if isAccessibilityTrusted {
@@ -334,7 +334,7 @@ final class TranslationPanelController {
         model.isError = false
         model.canBackTranslate = false
         model.selectedHistoryID = nil
-        showPanel()
+        showPanel(ordersFront: ordersFront)
     }
 
     private static func contextLabel(direction: TranslationDirection, shortcutProfile: ShortcutProfile) -> String {

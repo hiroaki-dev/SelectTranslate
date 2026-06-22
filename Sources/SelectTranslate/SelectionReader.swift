@@ -22,6 +22,8 @@ final class SelectionReader {
     private let maxSearchDepth = 6
     private let maxVisitedElements = 900
     private let accessibilityTimeout: Float = 0.08
+    private let accessibilityPromptMinimumInterval: TimeInterval = 2
+    private var lastAccessibilityPromptRequestedAt: Date?
 
     var isAccessibilityTrusted: Bool {
         AXIsProcessTrusted()
@@ -33,6 +35,13 @@ final class SelectionReader {
             return true
         }
 
+        let now = Date()
+        if let lastAccessibilityPromptRequestedAt,
+           now.timeIntervalSince(lastAccessibilityPromptRequestedAt) < accessibilityPromptMinimumInterval {
+            return false
+        }
+
+        lastAccessibilityPromptRequestedAt = now
         let key = kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String
         let options = [key: true] as CFDictionary
         return AXIsProcessTrustedWithOptions(options)

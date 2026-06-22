@@ -14,6 +14,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var statusItem: NSStatusItem?
     private var translationTask: Task<Void, Never>?
     private var accessibilityRetryTask: Task<Void, Never>?
+    private var startupAccessibilityPromptTask: Task<Void, Never>?
     private var currentTranslationRequest: TranslationRequest?
     private var currentTranslationResult: TranslationResult?
     private var translationCache: [TranslationCacheKey: String] = [:]
@@ -45,13 +46,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         observeShortcutProfileChanges()
         registerHotKeys()
         let isAccessibilityTrusted = selectionReader.isAccessibilityTrusted
-        panelController.showReady(isAccessibilityTrusted: isAccessibilityTrusted)
+        panelController.showReady(
+            isAccessibilityTrusted: isAccessibilityTrusted,
+            activates: isAccessibilityTrusted
+        )
         if !isAccessibilityTrusted {
-            selectionReader.requestAccessibilityPermissionPromptIfNeeded()
+            scheduleStartupAccessibilityPrompt()
         }
     }
 
     func applicationWillTerminate(_ notification: Notification) {
+        startupAccessibilityPromptTask?.cancel()
         accessibilityRetryTask?.cancel()
         unregisterHotKeys()
         if let shortcutProfilesObserver {
@@ -180,7 +185,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @objc private func openAccessibilitySettings() {
-        selectionReader.requestAccessibilityPermissionPromptIfNeeded()
         if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility") {
             NSWorkspace.shared.open(url)
         }
@@ -317,10 +321,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         } catch SelectionReaderError.accessibilityPermissionRequired {
             currentTranslationRequest = nil
             currentTranslationResult = nil
+            panelController.cancelActivationOnNextShow()
             panelController.showError(
                 source: nil,
                 title: "Accessibility Permission Required",
-                message: "Allow SelectTranslate in System Settings > Privacy & Security > Accessibility. The translation will retry automatically after permission is enabled."
+                message: "Allow SelectTranslate in System Settings > Privacy & Security > Accessibility. The translation will retry automatically after permission is enabled.",
+                activates: false
             )
             scheduleAccessibilityRetryAfterGrant(
                 preferredProcessIdentifier: preferredProcessIdentifier,
@@ -358,6 +364,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
 
         selectionReader.requestAccessibilityPermissionPromptIfNeeded()
+    }
+
+    private func scheduleStartupAccessibilityPrompt() {
+        startupAccessibilityPromptTask?.cancel()
+        startupAccessibilityPromptTask = Task { [weak self] in
+            try? await Task.sleep(nanoseconds: 250_000_000)
+            guard !Task.isCancelled else { return }
+
+            await MainActor.run { [weak self] in
+                guard let self else { return }
+                self.startupAccessibilityPromptTask = nil
+                self.selectionReader.requestAccessibilityPermissionPromptIfNeeded()
+            }
+        }
     }
 
     private func scheduleAccessibilityRetryAfterGrant(preferredProcessIdentifier: pid_t?, shortcutProfile: ShortcutProfile) {

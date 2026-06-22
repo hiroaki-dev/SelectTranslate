@@ -177,10 +177,6 @@ final class TranslationPanelController {
         shouldActivateOnNextShow = true
     }
 
-    func cancelActivationOnNextShow() {
-        shouldActivateOnNextShow = false
-    }
-
     func setHistoryItems(_ items: [TranslationHistoryItem]) {
         model.setHistoryItems(items)
     }
@@ -251,7 +247,7 @@ final class TranslationPanelController {
         model.isError = false
     }
 
-    func showError(source: String?, title: String, message: String, ordersFront: Bool = true) {
+    func showError(source: String?, title: String, message: String) {
         model.sourceText = source ?? ""
         model.translatedText = ""
         model.directionLabel = ""
@@ -265,7 +261,7 @@ final class TranslationPanelController {
         model.isError = true
         model.canBackTranslate = false
         model.selectedHistoryID = nil
-        showPanel(ordersFront: ordersFront)
+        showPanel()
     }
 
     func showPreparationLoading(title: String, message: String) {
@@ -314,7 +310,7 @@ final class TranslationPanelController {
         showPanel()
     }
 
-    func showReady(isAccessibilityTrusted: Bool, ordersFront: Bool = true) {
+    func showReady(isAccessibilityTrusted: Bool) {
         model.sourceText = ""
 
         if isAccessibilityTrusted {
@@ -334,7 +330,7 @@ final class TranslationPanelController {
         model.isError = false
         model.canBackTranslate = false
         model.selectedHistoryID = nil
-        showPanel(ordersFront: ordersFront)
+        showPanel()
     }
 
     private static func contextLabel(direction: TranslationDirection, shortcutProfile: ShortcutProfile) -> String {
@@ -373,20 +369,18 @@ final class TranslationPanelController {
         return "\(provider.description) is translating the selected text."
     }
 
-    private func showPanel(ordersFront: Bool = true) {
+    private func showPanel() {
         let shouldCenter = panel == nil
         let panel = panel ?? makePanel()
         self.panel = panel
         if shouldCenter {
             panel.center()
         }
-        if shouldActivateOnNextShow, ordersFront {
+        if shouldActivateOnNextShow {
             shouldActivateOnNextShow = false
             NSApp.activate(ignoringOtherApps: true)
         }
-        if ordersFront {
-            panel.makeKeyAndOrderFront(nil)
-        }
+        panel.makeKeyAndOrderFront(nil)
     }
 
     private func makePanel() -> NSPanel {

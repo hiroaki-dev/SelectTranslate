@@ -44,11 +44,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         configureStatusItem()
         observeShortcutProfileChanges()
         registerHotKeys()
-        let isAccessibilityTrusted = selectionReader.requestAccessibilityPermissionPromptIfNeeded()
-        panelController.showReady(
-            isAccessibilityTrusted: isAccessibilityTrusted,
-            ordersFront: isAccessibilityTrusted
-        )
+        let isAccessibilityTrusted = selectionReader.isAccessibilityTrusted
+        panelController.showReady(isAccessibilityTrusted: isAccessibilityTrusted)
+        if !isAccessibilityTrusted {
+            selectionReader.requestAccessibilityPermissionPromptIfNeeded()
+        }
     }
 
     func applicationWillTerminate(_ notification: Notification) {
@@ -317,18 +317,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         } catch SelectionReaderError.accessibilityPermissionRequired {
             currentTranslationRequest = nil
             currentTranslationResult = nil
-            panelController.cancelActivationOnNextShow()
-            requestAccessibilityPermissionFromShortcutIfNeeded()
+            panelController.showError(
+                source: nil,
+                title: "Accessibility Permission Required",
+                message: "Allow SelectTranslate in System Settings > Privacy & Security > Accessibility. The translation will retry automatically after permission is enabled."
+            )
             scheduleAccessibilityRetryAfterGrant(
                 preferredProcessIdentifier: preferredProcessIdentifier,
                 shortcutProfile: shortcutProfile
             )
-            panelController.showError(
-                source: nil,
-                title: "Accessibility Permission Required",
-                message: "Allow SelectTranslate in System Settings > Privacy & Security > Accessibility. The translation will retry automatically after permission is enabled.",
-                ordersFront: false
-            )
+            requestAccessibilityPermissionFromShortcutIfNeeded()
         } catch SelectionReaderError.noSelectedText {
             currentTranslationRequest = nil
             currentTranslationResult = nil

@@ -120,6 +120,22 @@ final class TranslationPanelModel: ObservableObject {
         selectedHistoryID = item.id
     }
 
+    func showNewTranslation() {
+        sourceText = ""
+        translatedText = ""
+        directionLabel = ""
+        title = "New Translation"
+        message = "Type or paste text in Original, then press the translate button."
+        backTranslatedText = ""
+        backTranslationMessage = ""
+        isLoading = false
+        isBackTranslating = false
+        isBackTranslationError = false
+        isError = false
+        canBackTranslate = false
+        selectedHistoryID = nil
+    }
+
     private func refreshPlamoReadiness() {
         isPlamoReady = PlamoSetupService.isSetupComplete
         if !isPlamoReady, translationProvider == .plamo {
@@ -139,6 +155,7 @@ final class TranslationPanelController {
     var onBackTranslateRequested: (() -> Void)?
     var onSourceTranslateRequested: (() -> Void)?
     var onHistoryItemSelected: ((TranslationHistoryItem) -> Void)?
+    var onNewTranslationRequested: (() -> Void)?
 
     var reasoningEffort: ReasoningEffort {
         model.reasoningEffort
@@ -170,6 +187,11 @@ final class TranslationPanelController {
 
     func showHistoryItem(_ item: TranslationHistoryItem) {
         model.showHistoryItem(item)
+        showPanel()
+    }
+
+    func showNewTranslation() {
+        model.showNewTranslation()
         showPanel()
     }
 
@@ -396,6 +418,9 @@ final class TranslationPanelController {
                 selectHistoryItem: { [weak self] item in
                     self?.onHistoryItemSelected?(item)
                 },
+                newTranslation: { [weak self] in
+                    self?.onNewTranslationRequested?()
+                },
                 close: { [weak panel] in
                     panel?.close()
                 }
@@ -413,6 +438,7 @@ private struct TranslationOverlayView: View {
     let backTranslate: () -> Void
     let translateSource: () -> Void
     let selectHistoryItem: (TranslationHistoryItem) -> Void
+    let newTranslation: () -> Void
     let close: () -> Void
 
     var body: some View {
@@ -434,6 +460,32 @@ private struct TranslationOverlayView: View {
 
     private var historySidebar: some View {
         VStack(alignment: .leading, spacing: 10) {
+            Button(action: newTranslation) {
+                HStack(spacing: 6) {
+                    Image(systemName: "plus")
+                        .font(.system(size: 11, weight: .semibold))
+                    Text("New Translation")
+                        .font(.system(size: 12, weight: .semibold))
+                    Spacer()
+                }
+                .padding(.horizontal, 9)
+                .padding(.vertical, 8)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .disabled(model.isLoading || model.isBackTranslating)
+            .foregroundStyle(model.isLoading || model.isBackTranslating ? .secondary : .primary)
+            .background(
+                RoundedRectangle(cornerRadius: 8)
+                    .fill(Color(nsColor: .controlBackgroundColor).opacity(0.65))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 8)
+                    .stroke(Color(nsColor: .separatorColor), lineWidth: 1)
+            )
+            .help("Start a new manual translation")
+
             Text("History")
                 .font(.system(size: 13, weight: .semibold))
                 .foregroundStyle(.secondary)

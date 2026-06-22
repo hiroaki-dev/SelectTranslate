@@ -398,6 +398,7 @@ final class TranslationPanelController {
         panel.isMovableByWindowBackground = true
         panel.level = .normal
         panel.collectionBehavior = [.fullScreenAuxiliary]
+        panel.hidesOnDeactivate = false
         panel.backgroundColor = .clear
         panel.isReleasedWhenClosed = false
         panel.contentView = NSHostingView(

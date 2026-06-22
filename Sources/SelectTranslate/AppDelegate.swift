@@ -36,6 +36,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         panelController.onHistoryItemSelected = { [weak self] item in
             self?.showHistoryItem(item)
         }
+        panelController.onNewTranslationRequested = { [weak self] in
+            self?.showNewTranslation()
+        }
         panelController.setHistoryItems(historyStore.loadItems())
         configureApplicationMenu()
         configureStatusItem()
@@ -516,6 +519,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         currentTranslationResult = nil
         panelController.activateOnNextShow()
         panelController.showHistoryItem(item)
+    }
+
+    private func showNewTranslation() {
+        guard translationTask == nil else { return }
+
+        cancelAccessibilityRetry()
+        currentTranslationRequest = nil
+        currentTranslationResult = nil
+        panelController.activateOnNextShow()
+        panelController.showNewTranslation()
     }
 
     private func historyEngineLabel(provider: TranslationProvider, effort: ReasoningEffort) -> String {

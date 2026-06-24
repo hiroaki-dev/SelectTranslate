@@ -782,6 +782,8 @@ private struct TranslationOverlayView: View {
             if shouldShowReplyWorkflow {
                 replyWorkflow
                     .frame(height: 190)
+            } else if shouldShowPlamoReplyUnavailableMessage {
+                plamoReplyUnavailableMessage
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -934,6 +936,10 @@ private struct TranslationOverlayView: View {
             )
     }
 
+    private var shouldShowPlamoReplyUnavailableMessage: Bool {
+        model.translationProvider == .plamo && model.canBackTranslate
+    }
+
     private var isBusy: Bool {
         model.isLoading || model.isBackTranslating || model.isReplyTranslating
     }
@@ -948,6 +954,28 @@ private struct TranslationOverlayView: View {
             model.translationProvider != .plamo &&
             model.canBackTranslate &&
             !model.replyDraftText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    private var plamoReplyUnavailableMessage: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundStyle(.orange)
+            Text("PLaMo does not support Contextual reply.")
+                .font(.system(size: 12, weight: .medium))
+                .foregroundStyle(.secondary)
+            Spacer()
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
+        .background(
+            RoundedRectangle(cornerRadius: 8)
+                .fill(Color(nsColor: .controlBackgroundColor).opacity(0.65))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 8)
+                .stroke(Color(nsColor: .separatorColor), lineWidth: 1)
+        )
     }
 
     private var replyWorkflow: some View {

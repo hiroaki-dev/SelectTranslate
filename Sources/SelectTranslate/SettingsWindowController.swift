@@ -586,14 +586,6 @@ private struct SettingsView: View {
                         .font(.system(size: 12))
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
-                    Text("PLaMo ignores shortcut prompt templates and uses the selected text directly.")
-                        .font(.system(size: 12))
-                        .foregroundStyle(.red)
-                        .fixedSize(horizontal: false, vertical: true)
-                    Text("Contextual reply is not available with PLaMo.")
-                        .font(.system(size: 12))
-                        .foregroundStyle(.red)
-                        .fixedSize(horizontal: false, vertical: true)
                 }
 
                 if !model.plamoStatusLog.isEmpty {
@@ -777,9 +769,12 @@ private struct SettingsView: View {
                 VStack(alignment: .leading, spacing: 4) {
                     Text("Prompt")
                         .font(.system(size: 14, weight: .semibold))
-                    Text("Used by Codex and API. PLaMo ignores shortcut prompt templates.")
+                    Text("Used by Codex and API.")
                         .font(.system(size: 12))
                         .foregroundStyle(.secondary)
+                    Text("PLaMo ignores shortcut prompt templates.")
+                        .font(.system(size: 12))
+                        .foregroundStyle(.red)
                 }
                 Spacer()
                 Button("Reset Prompt") {

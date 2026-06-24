@@ -9,6 +9,8 @@ struct TranslationHistoryItem: Identifiable, Equatable {
     let engineLabel: String
     let providerRawValue: String
     let directionLabel: String
+    let replyDraftText: String
+    let translatedReplyText: String
 
     var originalPreview: String {
         let lines = originalText.components(separatedBy: .newlines)
@@ -44,7 +46,8 @@ final class TranslationHistoryStore {
         do {
             try openDatabase()
             let sql = """
-            SELECT id, created_at, original_text, translated_text, engine_label, provider_raw_value, direction_label
+            SELECT id, created_at, original_text, translated_text, engine_label, provider_raw_value, direction_label,
+                   reply_draft_text, translated_reply_text
             FROM translation_history
             ORDER BY created_at DESC, id DESC
             LIMIT ?;
@@ -64,7 +67,9 @@ final class TranslationHistoryStore {
                         translatedText: columnText(statement, 3),
                         engineLabel: columnText(statement, 4),
                         providerRawValue: columnText(statement, 5),
-                        directionLabel: columnText(statement, 6)
+                        directionLabel: columnText(statement, 6),
+                        replyDraftText: columnText(statement, 7),
+                        translatedReplyText: columnText(statement, 8)
                     )
                 )
             }
@@ -117,10 +122,43 @@ final class TranslationHistoryStore {
                 translatedText: translatedText,
                 engineLabel: engineLabel,
                 providerRawValue: providerRawValue,
-                directionLabel: directionLabel
+                directionLabel: directionLabel,
+                replyDraftText: "",
+                translatedReplyText: ""
             )
         } catch {
             NSLog("SelectTranslate history insert failed: \(error.localizedDescription)")
+            return nil
+        }
+    }
+
+    @discardableResult
+    func updateReply(
+        id: Int64,
+        replyDraftText: String,
+        translatedReplyText: String
+    ) -> TranslationHistoryItem? {
+        do {
+            try openDatabase()
+            let sql = """
+            UPDATE translation_history
+            SET reply_draft_text = ?, translated_reply_text = ?
+            WHERE id = ?;
+            """
+            let statement = try prepare(sql)
+            defer { sqlite3_finalize(statement) }
+
+            bindText(replyDraftText, to: statement, at: 1)
+            bindText(translatedReplyText, to: statement, at: 2)
+            sqlite3_bind_int64(statement, 3, id)
+
+            guard sqlite3_step(statement) == SQLITE_DONE else {
+                throw SQLiteHistoryError.step(message: lastErrorMessage)
+            }
+
+            return loadItem(id: id)
+        } catch {
+            NSLog("SelectTranslate history reply update failed: \(error.localizedDescription)")
             return nil
         }
     }
@@ -161,10 +199,77 @@ final class TranslationHistoryStore {
             direction_label TEXT NOT NULL
         );
         """)
+        try addColumnIfNeeded(
+            tableName: "translation_history",
+            columnName: "reply_draft_text",
+            definition: "TEXT NOT NULL DEFAULT ''"
+        )
+        try addColumnIfNeeded(
+            tableName: "translation_history",
+            columnName: "translated_reply_text",
+            definition: "TEXT NOT NULL DEFAULT ''"
+        )
         try execute("""
         CREATE INDEX IF NOT EXISTS idx_translation_history_created_at
         ON translation_history(created_at DESC, id DESC);
         """)
+    }
+
+    private func loadItem(id: Int64) -> TranslationHistoryItem? {
+        do {
+            try openDatabase()
+            let sql = """
+            SELECT id, created_at, original_text, translated_text, engine_label, provider_raw_value, direction_label,
+                   reply_draft_text, translated_reply_text
+            FROM translation_history
+            WHERE id = ?
+            LIMIT 1;
+            """
+            let statement = try prepare(sql)
+            defer { sqlite3_finalize(statement) }
+
+            sqlite3_bind_int64(statement, 1, id)
+
+            guard sqlite3_step(statement) == SQLITE_ROW else {
+                return nil
+            }
+
+            return TranslationHistoryItem(
+                id: sqlite3_column_int64(statement, 0),
+                createdAt: Date(timeIntervalSince1970: sqlite3_column_double(statement, 1)),
+                originalText: columnText(statement, 2),
+                translatedText: columnText(statement, 3),
+                engineLabel: columnText(statement, 4),
+                providerRawValue: columnText(statement, 5),
+                directionLabel: columnText(statement, 6),
+                replyDraftText: columnText(statement, 7),
+                translatedReplyText: columnText(statement, 8)
+            )
+        } catch {
+            NSLog("SelectTranslate history item load failed: \(error.localizedDescription)")
+            return nil
+        }
+    }
+
+    private func addColumnIfNeeded(tableName: String, columnName: String, definition: String) throws {
+        guard try !tableHasColumn(tableName: tableName, columnName: columnName) else {
+            return
+        }
+
+        try execute("ALTER TABLE \(tableName) ADD COLUMN \(columnName) \(definition);")
+    }
+
+    private func tableHasColumn(tableName: String, columnName: String) throws -> Bool {
+        let statement = try prepare("PRAGMA table_info(\(tableName));")
+        defer { sqlite3_finalize(statement) }
+
+        while sqlite3_step(statement) == SQLITE_ROW {
+            if columnText(statement, 1) == columnName {
+                return true
+            }
+        }
+
+        return false
     }
 
     private func execute(_ sql: String) throws {

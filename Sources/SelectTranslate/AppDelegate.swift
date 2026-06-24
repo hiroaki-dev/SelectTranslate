@@ -17,6 +17,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var startupAccessibilityPromptTask: Task<Void, Never>?
     private var currentTranslationRequest: TranslationRequest?
     private var currentTranslationResult: TranslationResult?
+    private var currentHistoryItemID: Int64?
     private var translationCache: [TranslationCacheKey: String] = [:]
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -477,6 +478,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if currentTranslationRequest?.sourceText != request.sourceText {
             translationCache.removeAll()
             currentTranslationResult = nil
+            currentHistoryItemID = nil
             panelController.clearReplyState(clearDraft: true)
         }
         currentTranslationRequest = request
@@ -516,6 +518,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 }
             )
             translationCache[cacheKey] = translatedText
+            currentHistoryItemID = nil
             currentTranslationResult = TranslationResult(
                 sourceText: request.sourceText,
                 direction: request.direction,
@@ -560,6 +563,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             return
         }
 
+        currentHistoryItemID = item.id
         panelController.prependHistoryItem(item)
     }
 
@@ -577,6 +581,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             translatedText: item.translatedText,
             shortcutProfile: request.shortcutProfile
         )
+        currentHistoryItemID = item.id
         panelController.activateOnNextShow()
         panelController.showHistoryItem(item)
     }
@@ -587,6 +592,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         cancelAccessibilityRetry()
         currentTranslationRequest = nil
         currentTranslationResult = nil
+        currentHistoryItemID = nil
         panelController.activateOnNextShow()
         panelController.showNewTranslation()
     }
@@ -654,6 +660,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 }
             )
             panelController.showReplyTranslationResult(translatedReply)
+            if let currentHistoryItemID,
+               let updatedItem = historyStore.updateReply(
+                   id: currentHistoryItemID,
+                   replyDraftText: draft,
+                   translatedReplyText: translatedReply
+               ) {
+                panelController.updateHistoryItem(updatedItem)
+            }
         } catch {
             panelController.showReplyTranslationError(error.localizedDescription)
         }

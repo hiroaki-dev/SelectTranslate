@@ -123,6 +123,14 @@ final class TranslationPanelModel: ObservableObject {
         selectedHistoryID = item.id
     }
 
+    func updateHistoryItem(_ item: TranslationHistoryItem) {
+        guard let index = historyItems.firstIndex(where: { $0.id == item.id }) else {
+            return
+        }
+
+        historyItems[index] = item
+    }
+
     func showHistoryItem(_ item: TranslationHistoryItem) {
         sourceText = item.originalText
         translatedText = item.translatedText
@@ -131,7 +139,9 @@ final class TranslationPanelModel: ObservableObject {
         message = ""
         backTranslatedText = ""
         backTranslationMessage = ""
-        clearReplyState(clearDraft: true)
+        replyDraftText = item.replyDraftText
+        translatedReplyText = item.translatedReplyText
+        replyTranslationMessage = ""
         isLoading = false
         isBackTranslating = false
         isReplyTranslating = false
@@ -227,6 +237,10 @@ final class TranslationPanelController {
 
     func prependHistoryItem(_ item: TranslationHistoryItem) {
         model.prependHistoryItem(item)
+    }
+
+    func updateHistoryItem(_ item: TranslationHistoryItem) {
+        model.updateHistoryItem(item)
     }
 
     func clearReplyState(clearDraft: Bool) {

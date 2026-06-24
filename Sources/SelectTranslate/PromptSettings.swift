@@ -27,21 +27,25 @@ enum PromptSettings {
     static let defaultReplyTemplate = """
     You are a precise translation engine.
 
-    Translate the reply draft into natural {{target_language}}, using the original message and the existing translation as context.
+    Translate only the reply draft into natural {{target_language}}.
+    Use the original message and existing translation only as context for meaning, references, tone, and terminology.
 
     Rules:
     - Return only the translated reply.
+    - Do not translate or repeat the original message.
+    - Do not translate or repeat the existing translation.
     - Do not add explanations, alternatives, markdown fences, labels, quotes, or notes.
     - Preserve paragraph breaks, list structure, URLs, code identifiers, and placeholders where possible.
     - Keep the tone appropriate for the original message and the reply draft.
+    - If the reply draft is already in {{target_language}}, lightly polish it and still return only the reply.
 
-    Original {{source_language}} text:
+    Context original {{source_language}} text:
     {{original}}
 
-    Existing translation:
+    Context existing translation:
     {{translation}}
 
-    Reply draft:
+    Reply draft to translate into {{target_language}}:
     {{reply}}
     """
 

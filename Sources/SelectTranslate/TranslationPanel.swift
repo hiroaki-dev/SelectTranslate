@@ -1095,24 +1095,15 @@ private struct TranslationOverlayView: View {
     }
 
     private func editableTextBox(placeholder: String) -> some View {
-        ZStack(alignment: .topLeading) {
-            CommandReturnTextEditor(
-                text: Binding(
-                    get: { model.sourceText },
-                    set: { model.updateSourceTextFromUser($0) }
-                ),
-                isDisabled: isBusy,
-                onSubmit: translateSource
-            )
-
-            if model.sourceText.isEmpty, !placeholder.isEmpty {
-                Text(placeholder)
-                    .font(.system(size: 15))
-                    .foregroundStyle(.secondary)
-                    .padding(12)
-                    .allowsHitTesting(false)
-            }
-        }
+        CommandReturnTextEditor(
+            text: Binding(
+                get: { model.sourceText },
+                set: { model.updateSourceTextFromUser($0) }
+            ),
+            placeholder: placeholder,
+            isDisabled: isBusy,
+            onSubmit: translateSource
+        )
         .background(
             RoundedRectangle(cornerRadius: 8)
                 .fill(Color(nsColor: .textBackgroundColor).opacity(0.82))
@@ -1129,21 +1120,12 @@ private struct TranslationOverlayView: View {
         isDisabled: Bool,
         onSubmit: @escaping () -> Void
     ) -> some View {
-        ZStack(alignment: .topLeading) {
-            CommandReturnTextEditor(
-                text: text,
-                isDisabled: isDisabled,
-                onSubmit: onSubmit
-            )
-
-            if text.wrappedValue.isEmpty, !placeholder.isEmpty {
-                Text(placeholder)
-                    .font(.system(size: 15))
-                    .foregroundStyle(.secondary)
-                    .padding(12)
-                    .allowsHitTesting(false)
-            }
-        }
+        CommandReturnTextEditor(
+            text: text,
+            placeholder: placeholder,
+            isDisabled: isDisabled,
+            onSubmit: onSubmit
+        )
         .background(
             RoundedRectangle(cornerRadius: 8)
                 .fill(Color(nsColor: .textBackgroundColor).opacity(0.82))
@@ -1168,6 +1150,7 @@ private struct TranslationOverlayView: View {
 
 private struct CommandReturnTextEditor: NSViewRepresentable {
     @Binding var text: String
+    let placeholder: String
     let isDisabled: Bool
     let onSubmit: () -> Void
 
@@ -1196,7 +1179,10 @@ private struct CommandReturnTextEditor: NSViewRepresentable {
         textView.drawsBackground = false
         textView.font = NSFont.systemFont(ofSize: 15)
         textView.textColor = NSColor.labelColor
-        textView.textContainerInset = NSSize(width: 8, height: 8)
+        textView.placeholder = placeholder
+        textView.placeholderColor = NSColor.placeholderTextColor
+        textView.textContainerInset = NSSize(width: 12, height: 12)
+        textView.textContainer?.lineFragmentPadding = 0
         textView.textContainer?.widthTracksTextView = true
         textView.onCommandReturn = {
             context.coordinator.translate()
@@ -1212,12 +1198,15 @@ private struct CommandReturnTextEditor: NSViewRepresentable {
 
         if textView.string != text {
             textView.string = text
+            textView.needsDisplay = true
         }
         textView.isEditable = !isDisabled
         textView.isSelectable = true
+        textView.placeholder = placeholder
         textView.onCommandReturn = {
             context.coordinator.translate()
         }
+        textView.needsDisplay = true
     }
 
     final class Coordinator: NSObject, NSTextViewDelegate {
@@ -1231,6 +1220,7 @@ private struct CommandReturnTextEditor: NSViewRepresentable {
         func textDidChange(_ notification: Notification) {
             guard let textView = notification.object as? NSTextView else { return }
             parent.text = textView.string
+            textView.needsDisplay = true
         }
 
         func translate() {
@@ -1247,6 +1237,32 @@ private struct CommandReturnTextEditor: NSViewRepresentable {
 
     final class CommandReturnTextView: NSTextView {
         var onCommandReturn: (() -> Void)?
+        var placeholder: String = "" {
+            didSet {
+                needsDisplay = true
+            }
+        }
+        var placeholderColor: NSColor = .placeholderTextColor {
+            didSet {
+                needsDisplay = true
+            }
+        }
+
+        override func draw(_ dirtyRect: NSRect) {
+            super.draw(dirtyRect)
+
+            guard string.isEmpty, !placeholder.isEmpty else { return }
+
+            let attributes: [NSAttributedString.Key: Any] = [
+                .font: font ?? NSFont.systemFont(ofSize: 15),
+                .foregroundColor: placeholderColor
+            ]
+            let origin = NSPoint(
+                x: bounds.origin.x + textContainerInset.width,
+                y: bounds.origin.y + textContainerInset.height
+            )
+            placeholder.draw(at: origin, withAttributes: attributes)
+        }
 
         override func keyDown(with event: NSEvent) {
             let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)

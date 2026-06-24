@@ -34,6 +34,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         panelController.onSourceTranslateRequested = { [weak self] in
             self?.startManualSourceTranslation()
         }
+        panelController.onReplyTranslateRequested = { [weak self] in
+            self?.startReplyTranslation()
+        }
         panelController.onHistoryItemSelected = { [weak self] item in
             self?.showHistoryItem(item)
         }
@@ -297,6 +300,33 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
+    private func startReplyTranslation() {
+        let draft = panelController.replyDraftText
+        guard !draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            panelController.showReplyTranslationError("Type a reply before translating it.")
+            return
+        }
+        guard let result = currentTranslationResult else {
+            panelController.showReplyTranslationError("Translate original text before translating a reply.")
+            return
+        }
+        guard translationTask == nil else {
+            panelController.showReplyTranslationError("The current translation is still running.")
+            return
+        }
+
+        translationTask = Task { [weak self] in
+            guard let self else { return }
+            defer { self.translationTask = nil }
+            await self.translateReply(
+                draft: draft,
+                result: result,
+                effort: self.panelController.reasoningEffort,
+                provider: self.panelController.translationProvider
+            )
+        }
+    }
+
     private func translateCurrentSelection(
         preferredProcessIdentifier: pid_t?,
         isAccessibilityRetry: Bool,
@@ -447,6 +477,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if currentTranslationRequest?.sourceText != request.sourceText {
             translationCache.removeAll()
             currentTranslationResult = nil
+            panelController.clearReplyState(clearDraft: true)
         }
         currentTranslationRequest = request
     }
@@ -534,12 +565,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func showHistoryItem(_ item: TranslationHistoryItem) {
         cancelAccessibilityRetry()
-        currentTranslationRequest = TranslationRequest(
+        let request = TranslationRequest(
             sourceText: item.originalText,
             direction: TranslationDirection.detect(item.originalText),
             shortcutProfile: PromptSettings.defaultShortcutProfile
         )
-        currentTranslationResult = nil
+        currentTranslationRequest = request
+        currentTranslationResult = TranslationResult(
+            sourceText: item.originalText,
+            direction: request.direction,
+            translatedText: item.translatedText,
+            shortcutProfile: request.shortcutProfile
+        )
         panelController.activateOnNextShow()
         panelController.showHistoryItem(item)
     }
@@ -592,6 +629,33 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             panelController.showBackTranslationResult(backTranslatedText)
         } catch {
             panelController.showBackTranslationError(error.localizedDescription)
+        }
+    }
+
+    private func translateReply(
+        draft: String,
+        result: TranslationResult,
+        effort: ReasoningEffort,
+        provider: TranslationProvider
+    ) async {
+        do {
+            panelController.showReplyTranslationLoading(targetLanguage: result.direction.sourceLanguage)
+            let translatedReply = try await translator.translateReply(
+                draft: draft,
+                context: ReplyTranslationContext(
+                    originalText: result.sourceText,
+                    translatedText: result.translatedText,
+                    direction: result.direction
+                ),
+                effort: effort,
+                provider: provider,
+                onPartialResult: { [weak self] partialText in
+                    self?.panelController.showStreamingReplyTranslation(partialText)
+                }
+            )
+            panelController.showReplyTranslationResult(translatedReply)
+        } catch {
+            panelController.showReplyTranslationError(error.localizedDescription)
         }
     }
 

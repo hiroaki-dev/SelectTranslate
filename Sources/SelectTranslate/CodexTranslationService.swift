@@ -175,7 +175,10 @@ final class CodexTranslationService {
         case .claude:
             return try await translatePromptWithClaude(prompt, effort: effort)
         case .plamo:
-            return try await translateWithPlamo(prompt, onPartialResult: onPartialResult)
+            throw TranslationServiceError.invalidConfiguration(
+                provider: .plamo,
+                message: "Contextual reply is not available with PLaMo."
+            )
         case .openAICompatible:
             return try await translatePromptWithOpenAICompatibleAPI(prompt, onPartialResult: onPartialResult)
         }

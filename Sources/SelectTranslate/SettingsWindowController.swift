@@ -582,9 +582,17 @@ private struct SettingsView: View {
                     Text("Built with PLaMo")
                         .font(.system(size: 12, weight: .semibold))
                         .foregroundStyle(.secondary)
-                    Text("PLaMo is governed by the PLaMo community license. PLaMo ignores shortcut prompt templates and uses the selected text directly.")
+                    Text("PLaMo is governed by the PLaMo community license.")
                         .font(.system(size: 12))
                         .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                    Text("PLaMo ignores shortcut prompt templates and uses the selected text directly.")
+                        .font(.system(size: 12))
+                        .foregroundStyle(.red)
+                        .fixedSize(horizontal: false, vertical: true)
+                    Text("Contextual reply is not available with PLaMo.")
+                        .font(.system(size: 12))
+                        .foregroundStyle(.red)
                         .fixedSize(horizontal: false, vertical: true)
                 }
 

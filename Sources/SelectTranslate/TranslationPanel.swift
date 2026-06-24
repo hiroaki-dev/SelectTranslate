@@ -925,10 +925,13 @@ private struct TranslationOverlayView: View {
     }
 
     private var shouldShowReplyWorkflow: Bool {
-        model.canBackTranslate ||
-            !model.replyDraftText.isEmpty ||
-            !model.translatedReplyText.isEmpty ||
-            !model.replyTranslationMessage.isEmpty
+        model.translationProvider != .plamo &&
+            (
+                model.canBackTranslate ||
+                    !model.replyDraftText.isEmpty ||
+                    !model.translatedReplyText.isEmpty ||
+                    !model.replyTranslationMessage.isEmpty
+            )
     }
 
     private var isBusy: Bool {
@@ -942,6 +945,7 @@ private struct TranslationOverlayView: View {
 
     private var canTranslateReply: Bool {
         !isBusy &&
+            model.translationProvider != .plamo &&
             model.canBackTranslate &&
             !model.replyDraftText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }

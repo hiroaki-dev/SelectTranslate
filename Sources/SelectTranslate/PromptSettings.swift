@@ -3,6 +3,11 @@ import Foundation
 enum PromptSettings {
     static let instructionToken = "{{instruction}}"
     static let textToken = "{{text}}"
+    static let replyOriginalToken = "{{original}}"
+    static let replyTranslationToken = "{{translation}}"
+    static let replyDraftToken = "{{reply}}"
+    static let replyTargetLanguageToken = "{{target_language}}"
+    static let replySourceLanguageToken = "{{source_language}}"
 
     static let defaultTemplate = """
     You are a precise translation engine.
@@ -19,7 +24,29 @@ enum PromptSettings {
     {{text}}
     """
 
+    static let defaultReplyTemplate = """
+    You are a precise translation engine.
+
+    Translate the reply draft into natural {{target_language}}, using the original message and the existing translation as context.
+
+    Rules:
+    - Return only the translated reply.
+    - Do not add explanations, alternatives, markdown fences, labels, quotes, or notes.
+    - Preserve paragraph breaks, list structure, URLs, code identifiers, and placeholders where possible.
+    - Keep the tone appropriate for the original message and the reply draft.
+
+    Original {{source_language}} text:
+    {{original}}
+
+    Existing translation:
+    {{translation}}
+
+    Reply draft:
+    {{reply}}
+    """
+
     private static let templateDefaultsKey = "promptTemplate"
+    private static let replyTemplateDefaultsKey = "replyPromptTemplate"
     private static let shortcutProfilesDefaultsKey = "shortcutProfiles"
 
     static var template: String {
@@ -39,6 +66,18 @@ enum PromptSettings {
 
     static var shortcutProfiles: [ShortcutProfile] {
         loadShortcutProfiles()
+    }
+
+    static var replyTemplate: String {
+        get {
+            let savedTemplate = UserDefaults.standard.string(forKey: replyTemplateDefaultsKey) ?? ""
+            return savedTemplate.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                ? defaultReplyTemplate
+                : savedTemplate
+        }
+        set {
+            UserDefaults.standard.set(newValue, forKey: replyTemplateDefaultsKey)
+        }
     }
 
     static var defaultShortcutProfile: ShortcutProfile {
@@ -66,6 +105,10 @@ enum PromptSettings {
         guard let index = profiles.firstIndex(where: { $0.id == profileID }) else { return }
         profiles[index].promptTemplate = defaultTemplate
         saveShortcutProfiles(profiles)
+    }
+
+    static func resetReplyTemplate() {
+        replyTemplate = defaultReplyTemplate
     }
 
     static func validationMessages(for profiles: [ShortcutProfile]) -> [String] {
@@ -109,6 +152,38 @@ enum PromptSettings {
 
         if !prompt.contains(text) {
             prompt += "\n\nSource text:\n\(text)"
+        }
+
+        return prompt
+    }
+
+    static func renderReply(
+        template: String,
+        originalText: String,
+        translatedText: String,
+        replyDraft: String,
+        direction: TranslationDirection
+    ) -> String {
+        let trimmedTemplate = template.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            ? defaultReplyTemplate
+            : template
+        var prompt = trimmedTemplate
+            .replacingOccurrences(of: replyOriginalToken, with: originalText)
+            .replacingOccurrences(of: replyTranslationToken, with: translatedText)
+            .replacingOccurrences(of: replyDraftToken, with: replyDraft)
+            .replacingOccurrences(of: replyTargetLanguageToken, with: direction.sourceLanguage)
+            .replacingOccurrences(of: replySourceLanguageToken, with: direction.sourceLanguage)
+
+        if !prompt.contains(replyDraft) {
+            prompt += "\n\nReply draft:\n\(replyDraft)"
+        }
+
+        if !prompt.contains(originalText) {
+            prompt += "\n\nOriginal \(direction.sourceLanguage) text:\n\(originalText)"
+        }
+
+        if !prompt.contains(translatedText) {
+            prompt += "\n\nExisting \(direction.targetLanguage) translation:\n\(translatedText)"
         }
 
         return prompt

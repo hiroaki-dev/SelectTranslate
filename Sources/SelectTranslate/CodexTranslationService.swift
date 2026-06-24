@@ -162,7 +162,13 @@ final class CodexTranslationService {
         provider: TranslationProvider,
         onPartialResult: @escaping TranslationProgressHandler = { _ in }
     ) async throws -> String {
-        let prompt = Self.replyPrompt(draft: draft, context: context)
+        let prompt = PromptSettings.renderReply(
+            template: PromptSettings.replyTemplate,
+            originalText: context.originalText,
+            translatedText: context.translatedText,
+            replyDraft: draft,
+            direction: context.direction
+        )
         switch provider {
         case .codex:
             return try await translatePromptWithCodex(prompt, effort: effort)
@@ -540,29 +546,6 @@ final class CodexTranslationService {
         }
 
         return translated
-    }
-
-    private static func replyPrompt(draft: String, context: ReplyTranslationContext) -> String {
-        """
-        You are a precise translation engine.
-
-        Translate the reply draft into natural \(context.direction.sourceLanguage), using the original message and the existing translation as context.
-
-        Rules:
-        - Return only the translated reply.
-        - Do not add explanations, alternatives, markdown fences, labels, quotes, or notes.
-        - Preserve paragraph breaks, list structure, URLs, code identifiers, and placeholders where possible.
-        - Keep the tone appropriate for the original message and the reply draft.
-
-        Original \(context.direction.sourceLanguage) text:
-        \(context.originalText)
-
-        Existing \(context.direction.targetLanguage) translation:
-        \(context.translatedText)
-
-        Reply draft:
-        \(draft)
-        """
     }
 
     private static func parsePlamoOutput(_ output: String, sourceText: String) -> String {

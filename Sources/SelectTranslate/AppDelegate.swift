@@ -17,6 +17,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var startupAccessibilityPromptTask: Task<Void, Never>?
     private var currentTranslationRequest: TranslationRequest?
     private var currentTranslationResult: TranslationResult?
+    private var currentHistoryItemID: Int64?
     private var translationCache: [TranslationCacheKey: String] = [:]
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -33,6 +34,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         panelController.onSourceTranslateRequested = { [weak self] in
             self?.startManualSourceTranslation()
+        }
+        panelController.onReplyTranslateRequested = { [weak self] in
+            self?.startReplyTranslation()
+        }
+        panelController.onReplyBackTranslateRequested = { [weak self] in
+            self?.startReplyBackTranslation()
         }
         panelController.onHistoryItemSelected = { [weak self] item in
             self?.showHistoryItem(item)
@@ -297,6 +304,60 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
+    private func startReplyTranslation() {
+        let draft = panelController.replyDraftText
+        guard !draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            panelController.showReplyTranslationError("Type a reply before translating it.")
+            return
+        }
+        guard let result = currentTranslationResult else {
+            panelController.showReplyTranslationError("Translate original text before translating a reply.")
+            return
+        }
+        guard translationTask == nil else {
+            panelController.showReplyTranslationError("The current translation is still running.")
+            return
+        }
+
+        translationTask = Task { [weak self] in
+            guard let self else { return }
+            defer { self.translationTask = nil }
+            await self.translateReply(
+                draft: draft,
+                result: result,
+                effort: self.panelController.reasoningEffort,
+                provider: self.panelController.translationProvider
+            )
+        }
+    }
+
+    private func startReplyBackTranslation() {
+        let translatedReply = panelController.translatedReplyText
+        guard !translatedReply.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            panelController.showReplyBackTranslationError("Translate a reply before translating it back.")
+            return
+        }
+        guard let result = currentTranslationResult else {
+            panelController.showReplyBackTranslationError("Translate original text before translating a reply back.")
+            return
+        }
+        guard translationTask == nil else {
+            panelController.showReplyBackTranslationError("The current translation is still running.")
+            return
+        }
+
+        translationTask = Task { [weak self] in
+            guard let self else { return }
+            defer { self.translationTask = nil }
+            await self.backTranslateReply(
+                translatedReply: translatedReply,
+                result: result,
+                effort: self.panelController.reasoningEffort,
+                provider: self.panelController.translationProvider
+            )
+        }
+    }
+
     private func translateCurrentSelection(
         preferredProcessIdentifier: pid_t?,
         isAccessibilityRetry: Bool,
@@ -447,6 +508,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if currentTranslationRequest?.sourceText != request.sourceText {
             translationCache.removeAll()
             currentTranslationResult = nil
+            currentHistoryItemID = nil
+            panelController.clearReplyState(clearDraft: true)
         }
         currentTranslationRequest = request
     }
@@ -485,6 +548,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 }
             )
             translationCache[cacheKey] = translatedText
+            currentHistoryItemID = nil
             currentTranslationResult = TranslationResult(
                 sourceText: request.sourceText,
                 direction: request.direction,
@@ -529,17 +593,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             return
         }
 
+        currentHistoryItemID = item.id
         panelController.prependHistoryItem(item)
     }
 
     private func showHistoryItem(_ item: TranslationHistoryItem) {
         cancelAccessibilityRetry()
-        currentTranslationRequest = TranslationRequest(
+        let request = TranslationRequest(
             sourceText: item.originalText,
             direction: TranslationDirection.detect(item.originalText),
             shortcutProfile: PromptSettings.defaultShortcutProfile
         )
-        currentTranslationResult = nil
+        currentTranslationRequest = request
+        currentTranslationResult = TranslationResult(
+            sourceText: item.originalText,
+            direction: request.direction,
+            translatedText: item.translatedText,
+            shortcutProfile: request.shortcutProfile
+        )
+        currentHistoryItemID = item.id
         panelController.activateOnNextShow()
         panelController.showHistoryItem(item)
     }
@@ -550,6 +622,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         cancelAccessibilityRetry()
         currentTranslationRequest = nil
         currentTranslationResult = nil
+        currentHistoryItemID = nil
         panelController.activateOnNextShow()
         panelController.showNewTranslation()
     }
@@ -592,6 +665,65 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             panelController.showBackTranslationResult(backTranslatedText)
         } catch {
             panelController.showBackTranslationError(error.localizedDescription)
+        }
+    }
+
+    private func translateReply(
+        draft: String,
+        result: TranslationResult,
+        effort: ReasoningEffort,
+        provider: TranslationProvider
+    ) async {
+        do {
+            panelController.showReplyTranslationLoading(targetLanguage: result.direction.sourceLanguage)
+            let translatedReply = try await translator.translateReply(
+                draft: draft,
+                context: ReplyTranslationContext(
+                    originalText: result.sourceText,
+                    translatedText: result.translatedText,
+                    direction: result.direction
+                ),
+                effort: effort,
+                provider: provider,
+                onPartialResult: { [weak self] partialText in
+                    self?.panelController.showStreamingReplyTranslation(partialText)
+                }
+            )
+            panelController.showReplyTranslationResult(translatedReply)
+            if let currentHistoryItemID,
+               let updatedItem = historyStore.updateReply(
+                   id: currentHistoryItemID,
+                   replyDraftText: draft,
+                   translatedReplyText: translatedReply
+               ) {
+                panelController.updateHistoryItem(updatedItem)
+            }
+        } catch {
+            panelController.showReplyTranslationError(error.localizedDescription)
+        }
+    }
+
+    private func backTranslateReply(
+        translatedReply: String,
+        result: TranslationResult,
+        effort: ReasoningEffort,
+        provider: TranslationProvider
+    ) async {
+        do {
+            panelController.showReplyBackTranslationLoading(targetLanguage: result.direction.targetLanguage)
+            let backTranslatedReply = try await translator.translate(
+                translatedReply,
+                direction: result.direction,
+                effort: effort,
+                provider: provider,
+                promptTemplate: result.shortcutProfile.normalizedPromptTemplate,
+                onPartialResult: { [weak self] partialText in
+                    self?.panelController.showStreamingReplyBackTranslation(partialText)
+                }
+            )
+            panelController.showReplyBackTranslationResult(backTranslatedReply)
+        } catch {
+            panelController.showReplyBackTranslationError(error.localizedDescription)
         }
     }
 

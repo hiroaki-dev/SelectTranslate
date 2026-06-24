@@ -52,6 +52,15 @@ enum TranslationDirection: Hashable {
             return "English"
         }
     }
+
+    var sourceLanguage: String {
+        switch self {
+        case .englishToJapanese:
+            return "English"
+        case .japaneseToEnglish:
+            return "Japanese"
+        }
+    }
 }
 
 enum TranslationServiceError: LocalizedError {
@@ -109,6 +118,12 @@ enum TranslationServiceError: LocalizedError {
 
 typealias TranslationProgressHandler = @MainActor @Sendable (String) -> Void
 
+struct ReplyTranslationContext {
+    let originalText: String
+    let translatedText: String
+    let direction: TranslationDirection
+}
+
 final class CodexTranslationService {
     private static let minimumPlamoMaxTokens = 1024
     private static let maximumPlamoMaxTokens = 8192
@@ -127,31 +142,54 @@ final class CodexTranslationService {
         promptTemplate: String,
         onPartialResult: @escaping TranslationProgressHandler = { _ in }
     ) async throws -> String {
+        let prompt = PromptSettings.render(template: promptTemplate, text: text, direction: direction)
         switch provider {
         case .codex:
-            return try await translateWithCodex(text, direction: direction, effort: effort, promptTemplate: promptTemplate)
+            return try await translatePromptWithCodex(prompt, effort: effort)
         case .claude:
-            return try await translateWithClaude(text, direction: direction, effort: effort, promptTemplate: promptTemplate)
+            return try await translatePromptWithClaude(prompt, effort: effort)
         case .plamo:
             return try await translateWithPlamo(text, onPartialResult: onPartialResult)
         case .openAICompatible:
-            return try await translateWithOpenAICompatibleAPI(
-                text,
-                direction: direction,
-                promptTemplate: promptTemplate,
-                onPartialResult: onPartialResult
-            )
+            return try await translatePromptWithOpenAICompatibleAPI(prompt, onPartialResult: onPartialResult)
         }
     }
 
-    private func translateWithCodex(
-        _ text: String,
-        direction: TranslationDirection,
+    func translateReply(
+        draft: String,
+        context: ReplyTranslationContext,
         effort: ReasoningEffort,
-        promptTemplate: String
+        provider: TranslationProvider,
+        onPartialResult: @escaping TranslationProgressHandler = { _ in }
+    ) async throws -> String {
+        let prompt = PromptSettings.renderReply(
+            template: PromptSettings.replyTemplate,
+            originalText: context.originalText,
+            translatedText: context.translatedText,
+            replyDraft: draft,
+            direction: context.direction
+        )
+        switch provider {
+        case .codex:
+            return try await translatePromptWithCodex(prompt, effort: effort)
+        case .claude:
+            return try await translatePromptWithClaude(prompt, effort: effort)
+        case .plamo:
+            throw TranslationServiceError.invalidConfiguration(
+                provider: .plamo,
+                message: "Contextual reply is not available with PLaMo."
+            )
+        case .openAICompatible:
+            return try await translatePromptWithOpenAICompatibleAPI(prompt, onPartialResult: onPartialResult)
+        }
+    }
+
+    private func translatePromptWithCodex(
+        _ prompt: String,
+        effort: ReasoningEffort
     ) async throws -> String {
         let model = CodexSettings.model
-        return try await Task.detached(priority: .userInitiated) { [workspaceURL, effort, model, promptTemplate] in
+        return try await Task.detached(priority: .userInitiated) { [workspaceURL, effort, model, prompt] in
             try FileManager.default.createDirectory(at: workspaceURL, withIntermediateDirectories: true)
 
             let outputURL = FileManager.default.temporaryDirectory
@@ -161,7 +199,6 @@ final class CodexTranslationService {
                 try? FileManager.default.removeItem(at: outputURL)
             }
 
-            let prompt = PromptSettings.render(template: promptTemplate, text: text, direction: direction)
             let process = Process()
             process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
             process.currentDirectoryURL = workspaceURL
@@ -239,17 +276,14 @@ final class CodexTranslationService {
         }.value
     }
 
-    private func translateWithClaude(
-        _ text: String,
-        direction: TranslationDirection,
-        effort: ReasoningEffort,
-        promptTemplate: String
+    private func translatePromptWithClaude(
+        _ prompt: String,
+        effort: ReasoningEffort
     ) async throws -> String {
         let model = ClaudeSettings.model
-        return try await Task.detached(priority: .userInitiated) { [workspaceURL, effort, model, promptTemplate] in
+        return try await Task.detached(priority: .userInitiated) { [workspaceURL, effort, model, prompt] in
             try FileManager.default.createDirectory(at: workspaceURL, withIntermediateDirectories: true)
 
-            let prompt = PromptSettings.render(template: promptTemplate, text: text, direction: direction)
             let process = Process()
             process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
             process.currentDirectoryURL = workspaceURL
@@ -421,10 +455,8 @@ final class CodexTranslationService {
         }.value
     }
 
-    private func translateWithOpenAICompatibleAPI(
-        _ text: String,
-        direction: TranslationDirection,
-        promptTemplate: String,
+    private func translatePromptWithOpenAICompatibleAPI(
+        _ prompt: String,
         onPartialResult: @escaping TranslationProgressHandler
     ) async throws -> String {
         let configuration = OpenAICompatibleConfiguration.current()
@@ -470,11 +502,7 @@ final class CodexTranslationService {
                     ),
                     .init(
                         role: "user",
-                        content: PromptSettings.render(
-                            template: promptTemplate,
-                            text: text,
-                            direction: direction
-                        )
+                        content: prompt
                     )
                 ],
                 stream: true

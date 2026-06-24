@@ -73,6 +73,11 @@ private final class SettingsModel: ObservableObject {
             ClaudeSettings.model = claudeModel
         }
     }
+    @Published var replyPromptTemplate: String {
+        didSet {
+            PromptSettings.replyTemplate = replyPromptTemplate
+        }
+    }
     @Published var isAPIKeyVisible: Bool = false
     @Published var isPlamoReady: Bool
     @Published var isPreparingPlamo: Bool = false
@@ -98,6 +103,7 @@ private final class SettingsModel: ObservableObject {
         apiKey = OpenAICompatibleSettings.apiKey
         apiModel = OpenAICompatibleSettings.model
         claudeModel = ClaudeSettings.model
+        replyPromptTemplate = PromptSettings.replyTemplate
         let plamoReady = PlamoSetupService.isSetupComplete
         isPlamoReady = plamoReady
         translationProvider = TranslationPreferences.translationProvider
@@ -161,6 +167,11 @@ private final class SettingsModel: ObservableObject {
         updateSelectedShortcut { profile in
             profile.promptTemplate = PromptSettings.defaultTemplate
         }
+    }
+
+    func resetReplyPrompt() {
+        PromptSettings.resetReplyTemplate()
+        replyPromptTemplate = PromptSettings.replyTemplate
     }
 
     func updateSelectedShortcutName(_ name: String) {
@@ -325,6 +336,7 @@ private final class SettingsModel: ObservableObject {
 
 private enum SettingsSection: String, CaseIterable, Identifiable {
     case model
+    case prompts
     case shortcuts
 
     var id: String { rawValue }
@@ -333,6 +345,8 @@ private enum SettingsSection: String, CaseIterable, Identifiable {
         switch self {
         case .model:
             return "Model"
+        case .prompts:
+            return "Prompts"
         case .shortcuts:
             return "Shortcuts"
         }
@@ -342,6 +356,8 @@ private enum SettingsSection: String, CaseIterable, Identifiable {
         switch self {
         case .model:
             return "Choose translation engines and provider-specific settings."
+        case .prompts:
+            return "Review and edit shared prompt templates."
         case .shortcuts:
             return "Create shortcut sets with separate prompt templates."
         }
@@ -351,6 +367,8 @@ private enum SettingsSection: String, CaseIterable, Identifiable {
         switch self {
         case .model:
             return "cpu"
+        case .prompts:
+            return "text.quote"
         case .shortcuts:
             return "keyboard"
         }
@@ -430,6 +448,8 @@ private struct SettingsView: View {
             switch selectedSection {
             case .model:
                 modelSettings
+            case .prompts:
+                promptsSettings
             case .shortcuts:
                 shortcutsSettings
             }
@@ -477,6 +497,50 @@ private struct SettingsView: View {
         shortcutsSection
     }
 
+    private var promptsSettings: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 14) {
+                HStack(alignment: .firstTextBaseline) {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Reply translation prompt")
+                            .font(.system(size: 14, weight: .semibold))
+                        Text("Used when translating a reply draft back into the original language with the original text and first translation as context.")
+                            .font(.system(size: 12))
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+
+                    Spacer()
+
+                    Button("Reset Prompt") {
+                        model.resetReplyPrompt()
+                    }
+                    .help("Restore the default reply translation prompt")
+                }
+
+                Text("Available tokens: {{original}}, {{translation}}, {{reply}}, {{target_language}}, {{source_language}}")
+                    .font(.system(size: 12))
+                    .foregroundStyle(.secondary)
+                    .textSelection(.enabled)
+
+                TextEditor(text: $model.replyPromptTemplate)
+                    .font(.system(size: 13, design: .monospaced))
+                    .scrollContentBackground(.hidden)
+                    .padding(8)
+                    .background(
+                        RoundedRectangle(cornerRadius: 8)
+                            .fill(Color(nsColor: .textBackgroundColor))
+                    )
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 8)
+                            .stroke(Color(nsColor: .separatorColor), lineWidth: 1)
+                    )
+                    .frame(minHeight: 420)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+
     private var modelSection: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(alignment: .center, spacing: 12) {
@@ -518,7 +582,7 @@ private struct SettingsView: View {
                     Text("Built with PLaMo")
                         .font(.system(size: 12, weight: .semibold))
                         .foregroundStyle(.secondary)
-                    Text("PLaMo is governed by the PLaMo community license. PLaMo ignores shortcut prompt templates and uses the selected text directly.")
+                    Text("PLaMo is governed by the PLaMo community license.")
                         .font(.system(size: 12))
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
@@ -705,9 +769,12 @@ private struct SettingsView: View {
                 VStack(alignment: .leading, spacing: 4) {
                     Text("Prompt")
                         .font(.system(size: 14, weight: .semibold))
-                    Text("Used by Codex and API. PLaMo ignores shortcut prompt templates.")
+                    Text("Used by Codex and API.")
                         .font(.system(size: 12))
                         .foregroundStyle(.secondary)
+                    Text("PLaMo ignores shortcut prompt templates.")
+                        .font(.system(size: 12))
+                        .foregroundStyle(.red)
                 }
                 Spacer()
                 Button("Reset Prompt") {

@@ -38,6 +38,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         panelController.onReplyTranslateRequested = { [weak self] in
             self?.startReplyTranslation()
         }
+        panelController.onReplyBackTranslateRequested = { [weak self] in
+            self?.startReplyBackTranslation()
+        }
         panelController.onHistoryItemSelected = { [weak self] item in
             self?.showHistoryItem(item)
         }
@@ -321,6 +324,33 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             defer { self.translationTask = nil }
             await self.translateReply(
                 draft: draft,
+                result: result,
+                effort: self.panelController.reasoningEffort,
+                provider: self.panelController.translationProvider
+            )
+        }
+    }
+
+    private func startReplyBackTranslation() {
+        let translatedReply = panelController.translatedReplyText
+        guard !translatedReply.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            panelController.showReplyBackTranslationError("Translate a reply before translating it back.")
+            return
+        }
+        guard let result = currentTranslationResult else {
+            panelController.showReplyBackTranslationError("Translate original text before translating a reply back.")
+            return
+        }
+        guard translationTask == nil else {
+            panelController.showReplyBackTranslationError("The current translation is still running.")
+            return
+        }
+
+        translationTask = Task { [weak self] in
+            guard let self else { return }
+            defer { self.translationTask = nil }
+            await self.backTranslateReply(
+                translatedReply: translatedReply,
                 result: result,
                 effort: self.panelController.reasoningEffort,
                 provider: self.panelController.translationProvider
@@ -670,6 +700,30 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
         } catch {
             panelController.showReplyTranslationError(error.localizedDescription)
+        }
+    }
+
+    private func backTranslateReply(
+        translatedReply: String,
+        result: TranslationResult,
+        effort: ReasoningEffort,
+        provider: TranslationProvider
+    ) async {
+        do {
+            panelController.showReplyBackTranslationLoading(targetLanguage: result.direction.targetLanguage)
+            let backTranslatedReply = try await translator.translate(
+                translatedReply,
+                direction: result.direction,
+                effort: effort,
+                provider: provider,
+                promptTemplate: result.shortcutProfile.normalizedPromptTemplate,
+                onPartialResult: { [weak self] partialText in
+                    self?.panelController.showStreamingReplyBackTranslation(partialText)
+                }
+            )
+            panelController.showReplyBackTranslationResult(backTranslatedReply)
+        } catch {
+            panelController.showReplyBackTranslationError(error.localizedDescription)
         }
     }
 

@@ -17,11 +17,15 @@ final class TranslationPanelModel: ObservableObject {
     @Published var replyDraftText: String = ""
     @Published var translatedReplyText: String = ""
     @Published var replyTranslationMessage: String = ""
+    @Published var replyBackTranslatedText: String = ""
+    @Published var replyBackTranslationMessage: String = ""
     @Published var isLoading: Bool = false
     @Published var isBackTranslating: Bool = false
     @Published var isReplyTranslating: Bool = false
+    @Published var isReplyBackTranslating: Bool = false
     @Published var isBackTranslationError: Bool = false
     @Published var isReplyTranslationError: Bool = false
+    @Published var isReplyBackTranslationError: Bool = false
     @Published var isError: Bool = false
     @Published var canBackTranslate: Bool = false
     @Published var historyItems: [TranslationHistoryItem] = []
@@ -89,8 +93,10 @@ final class TranslationPanelModel: ObservableObject {
         clearReplyState(clearDraft: true)
         isBackTranslating = false
         isReplyTranslating = false
+        isReplyBackTranslating = false
         isBackTranslationError = false
         isReplyTranslationError = false
+        isReplyBackTranslationError = false
         isError = false
         canBackTranslate = false
     }
@@ -142,11 +148,15 @@ final class TranslationPanelModel: ObservableObject {
         replyDraftText = item.replyDraftText
         translatedReplyText = item.translatedReplyText
         replyTranslationMessage = ""
+        replyBackTranslatedText = ""
+        replyBackTranslationMessage = ""
         isLoading = false
         isBackTranslating = false
         isReplyTranslating = false
+        isReplyBackTranslating = false
         isBackTranslationError = false
         isReplyTranslationError = false
+        isReplyBackTranslationError = false
         isError = false
         canBackTranslate = true
         selectedHistoryID = item.id
@@ -164,8 +174,10 @@ final class TranslationPanelModel: ObservableObject {
         isLoading = false
         isBackTranslating = false
         isReplyTranslating = false
+        isReplyBackTranslating = false
         isBackTranslationError = false
         isReplyTranslationError = false
+        isReplyBackTranslationError = false
         isError = false
         canBackTranslate = false
         selectedHistoryID = nil
@@ -177,8 +189,12 @@ final class TranslationPanelModel: ObservableObject {
         }
         translatedReplyText = ""
         replyTranslationMessage = ""
+        replyBackTranslatedText = ""
+        replyBackTranslationMessage = ""
         isReplyTranslating = false
+        isReplyBackTranslating = false
         isReplyTranslationError = false
+        isReplyBackTranslationError = false
     }
 
     private func refreshPlamoReadiness() {
@@ -200,6 +216,7 @@ final class TranslationPanelController {
     var onBackTranslateRequested: (() -> Void)?
     var onSourceTranslateRequested: (() -> Void)?
     var onReplyTranslateRequested: (() -> Void)?
+    var onReplyBackTranslateRequested: (() -> Void)?
     var onHistoryItemSelected: ((TranslationHistoryItem) -> Void)?
     var onNewTranslationRequested: (() -> Void)?
 
@@ -217,6 +234,10 @@ final class TranslationPanelController {
 
     var replyDraftText: String {
         model.replyDraftText
+    }
+
+    var translatedReplyText: String {
+        model.translatedReplyText
     }
 
     func setTranslationProvider(_ provider: TranslationProvider) {
@@ -327,8 +348,10 @@ final class TranslationPanelController {
         model.isLoading = false
         model.isBackTranslating = false
         model.isReplyTranslating = false
+        model.isReplyBackTranslating = false
         model.isBackTranslationError = false
         model.isReplyTranslationError = false
+        model.isReplyBackTranslationError = false
         model.isError = true
         model.canBackTranslate = false
         model.selectedHistoryID = nil
@@ -346,8 +369,10 @@ final class TranslationPanelController {
         model.isLoading = true
         model.isBackTranslating = false
         model.isReplyTranslating = false
+        model.isReplyBackTranslating = false
         model.isBackTranslationError = false
         model.isReplyTranslationError = false
+        model.isReplyBackTranslationError = false
         model.isError = false
         model.canBackTranslate = false
         showPanel()
@@ -387,8 +412,12 @@ final class TranslationPanelController {
     func showReplyTranslationLoading(targetLanguage: String) {
         model.translatedReplyText = ""
         model.replyTranslationMessage = "Translating the reply into \(targetLanguage)."
+        model.replyBackTranslatedText = ""
+        model.replyBackTranslationMessage = ""
         model.isReplyTranslating = true
+        model.isReplyBackTranslating = false
         model.isReplyTranslationError = false
+        model.isReplyBackTranslationError = false
         showPanel()
     }
 
@@ -415,6 +444,37 @@ final class TranslationPanelController {
         showPanel()
     }
 
+    func showReplyBackTranslationLoading(targetLanguage: String) {
+        model.replyBackTranslatedText = ""
+        model.replyBackTranslationMessage = "Translating the reply back into \(targetLanguage)."
+        model.isReplyBackTranslating = true
+        model.isReplyBackTranslationError = false
+        showPanel()
+    }
+
+    func showStreamingReplyBackTranslation(_ text: String) {
+        guard model.isReplyBackTranslating else { return }
+        model.replyBackTranslatedText = text
+        model.replyBackTranslationMessage = ""
+        model.isReplyBackTranslationError = false
+    }
+
+    func showReplyBackTranslationResult(_ text: String) {
+        model.replyBackTranslatedText = text
+        model.replyBackTranslationMessage = ""
+        model.isReplyBackTranslating = false
+        model.isReplyBackTranslationError = false
+        showPanel()
+    }
+
+    func showReplyBackTranslationError(_ message: String) {
+        model.replyBackTranslatedText = ""
+        model.replyBackTranslationMessage = message
+        model.isReplyBackTranslating = false
+        model.isReplyBackTranslationError = true
+        showPanel()
+    }
+
     func showReady(isAccessibilityTrusted: Bool, activates: Bool = true) {
         model.sourceText = ""
 
@@ -433,8 +493,10 @@ final class TranslationPanelController {
         model.isLoading = false
         model.isBackTranslating = false
         model.isReplyTranslating = false
+        model.isReplyBackTranslating = false
         model.isBackTranslationError = false
         model.isReplyTranslationError = false
+        model.isReplyBackTranslationError = false
         model.isError = false
         model.canBackTranslate = false
         model.selectedHistoryID = nil
@@ -532,6 +594,9 @@ final class TranslationPanelController {
                 translateReply: { [weak self] in
                     self?.onReplyTranslateRequested?()
                 },
+                backTranslateReply: { [weak self] in
+                    self?.onReplyBackTranslateRequested?()
+                },
                 selectHistoryItem: { [weak self] item in
                     self?.onHistoryItemSelected?(item)
                 },
@@ -555,6 +620,7 @@ private struct TranslationOverlayView: View {
     let backTranslate: () -> Void
     let translateSource: () -> Void
     let translateReply: () -> Void
+    let backTranslateReply: () -> Void
     let selectHistoryItem: (TranslationHistoryItem) -> Void
     let newTranslation: () -> Void
     let close: () -> Void
@@ -781,7 +847,7 @@ private struct TranslationOverlayView: View {
 
             if shouldShowReplyWorkflow {
                 replyWorkflow
-                    .frame(height: 190)
+                    .frame(height: shouldShowReplyBackTranslation ? 300 : 190)
             } else if shouldShowPlamoReplyUnavailableMessage {
                 plamoReplyUnavailableMessage
             }
@@ -941,7 +1007,7 @@ private struct TranslationOverlayView: View {
     }
 
     private var isBusy: Bool {
-        model.isLoading || model.isBackTranslating || model.isReplyTranslating
+        model.isLoading || model.isBackTranslating || model.isReplyTranslating || model.isReplyBackTranslating
     }
 
     private var canTranslateSource: Bool {
@@ -954,6 +1020,18 @@ private struct TranslationOverlayView: View {
             model.translationProvider != .plamo &&
             model.canBackTranslate &&
             !model.replyDraftText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    private var canBackTranslateReply: Bool {
+        !isBusy &&
+            model.translationProvider != .plamo &&
+            !model.translatedReplyText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    private var shouldShowReplyBackTranslation: Bool {
+        model.isReplyBackTranslating ||
+            !model.replyBackTranslatedText.isEmpty ||
+            !model.replyBackTranslationMessage.isEmpty
     }
 
     private var plamoReplyUnavailableMessage: some View {
@@ -1047,6 +1125,14 @@ private struct TranslationOverlayView: View {
                     .lineLimit(1)
                 Spacer()
                 if !model.translatedReplyText.isEmpty {
+                    Button(action: backTranslateReply) {
+                        Image(systemName: "arrow.triangle.2.circlepath")
+                            .frame(width: 22, height: 22)
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(!canBackTranslateReply)
+                    .help("Translate reply back to the draft language")
+
                     Button {
                         NSPasteboard.general.clearContents()
                         NSPasteboard.general.setString(model.translatedReplyText, forType: .string)
@@ -1059,11 +1145,36 @@ private struct TranslationOverlayView: View {
                 }
             }
 
-            scrollText(
-                text: model.translatedReplyText,
-                placeholder: replyTranslationPlaceholder,
-                isError: model.isReplyTranslationError
-            )
+            VStack(alignment: .leading, spacing: 0) {
+                scrollText(
+                    text: model.translatedReplyText,
+                    placeholder: replyTranslationPlaceholder,
+                    isError: model.isReplyTranslationError
+                )
+                .frame(maxHeight: .infinity)
+
+                if shouldShowReplyBackTranslation {
+                    Divider()
+                    VStack(alignment: .leading, spacing: 8) {
+                        HStack(spacing: 8) {
+                            Text("Back translation")
+                                .font(.system(size: 12, weight: .semibold))
+                                .foregroundStyle(.secondary)
+                            if model.isReplyBackTranslating {
+                                ProgressView()
+                                    .controlSize(.small)
+                            }
+                        }
+                        scrollText(
+                            text: model.replyBackTranslatedText,
+                            placeholder: model.replyBackTranslationMessage,
+                            isError: model.isReplyBackTranslationError
+                        )
+                    }
+                    .padding(12)
+                    .frame(maxHeight: 120)
+                }
+            }
             .background(
                 RoundedRectangle(cornerRadius: 8)
                     .fill(Color(nsColor: .textBackgroundColor).opacity(0.82))

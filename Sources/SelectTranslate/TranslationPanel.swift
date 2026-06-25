@@ -470,7 +470,7 @@ final class TranslationPanelController {
 
     func showReplyCorrectionLoading() {
         model.translatedReplyText = ""
-        model.replyTranslationMessage = "Reviewing the English reply."
+        model.replyTranslationMessage = "Reviewing the reply."
         model.replyBackTranslatedText = ""
         model.replyBackTranslationMessage = ""
         model.isReplyTranslating = true
@@ -1096,8 +1096,16 @@ private struct TranslationOverlayView: View {
 
     private var isReplyCorrectionAvailable: Bool {
         model.translationProvider != .plamo &&
-            model.currentDirection == .englishToJapanese &&
+            model.currentDirection != nil &&
             model.canBackTranslate
+    }
+
+    private var replyDraftLanguage: String {
+        model.currentDirection?.sourceLanguage ?? "original language"
+    }
+
+    private var replyIntentLanguage: String {
+        model.currentDirection?.targetLanguage ?? "translated language"
     }
 
     private var shouldShowReplyBackTranslation: Bool {
@@ -1160,8 +1168,8 @@ private struct TranslationOverlayView: View {
                 .controlSize(.small)
                 .disabled(!isReplyCorrectionAvailable || isBusy)
                 .help(isReplyCorrectionAvailable
-                    ? "Review an English reply draft for Japanese learners"
-                    : "Correction mode is available when the original text is English"
+                    ? "Review a reply draft against the intended meaning"
+                    : "Correction mode is available after translating original text"
                 )
             }
             .frame(height: 20)
@@ -1188,14 +1196,14 @@ private struct TranslationOverlayView: View {
                     set: { model.updateReplyDraftTextFromUser($0) }
                 ),
                 placeholder: model.isReplyCorrectionEnabled
-                    ? "Write an English reply, then press Command + Return."
+                    ? "Write a \(replyDraftLanguage) reply, then press Command + Return."
                     : "Write a reply, then press Command + Return.",
                 isDisabled: isBusy,
                 onSubmit: translateReply
             )
 
             if model.isReplyCorrectionEnabled {
-                Text("Intended meaning (Japanese)")
+                Text("Intended meaning (\(replyIntentLanguage))")
                     .font(.system(size: 12, weight: .medium))
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
@@ -1206,7 +1214,7 @@ private struct TranslationOverlayView: View {
                         get: { model.replyIntentText },
                         set: { model.updateReplyIntentTextFromUser($0) }
                     ),
-                    placeholder: "日本語で本来言いたい内容を書く",
+                    placeholder: "Write what you want to say in \(replyIntentLanguage).",
                     isDisabled: isBusy,
                     onSubmit: translateReply
                 )

@@ -192,19 +192,13 @@ final class CodexTranslationService {
         provider: TranslationProvider,
         onPartialResult: @escaping TranslationProgressHandler = { _ in }
     ) async throws -> String {
-        guard context.direction == .englishToJapanese else {
-            throw TranslationServiceError.invalidConfiguration(
-                provider: provider,
-                message: "Reply correction is only available when the original text is English."
-            )
-        }
-
         let prompt = PromptSettings.renderReplyCorrection(
             template: PromptSettings.replyCorrectionTemplate,
             originalText: context.originalText,
             translatedText: context.translatedText,
             intendedText: intendedText,
-            replyDraft: draft
+            replyDraft: draft,
+            direction: context.direction
         )
         switch provider {
         case .codex:
@@ -219,7 +213,7 @@ final class CodexTranslationService {
         case .openAICompatible:
             return try await translatePromptWithOpenAICompatibleAPI(
                 prompt,
-                systemMessage: "You are an English writing coach for a Japanese learner. Follow the requested output structure exactly.",
+                systemMessage: "You are a writing coach for a language learner. Follow the requested output structure exactly.",
                 onPartialResult: onPartialResult
             )
         }

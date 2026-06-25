@@ -522,7 +522,7 @@ private struct SettingsView: View {
 
                 promptEditor(
                     title: "Reply correction prompt",
-                    description: "Used by Correction mode when the original text is English. The result should help Japanese learners review an English reply.",
+                    description: "Used by Correction mode. It reviews a reply draft in the original language against the intended meaning in the translated language.",
                     text: $model.replyCorrectionPromptTemplate,
                     reset: model.resetReplyCorrectionPrompt
                 )

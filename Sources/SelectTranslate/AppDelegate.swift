@@ -314,15 +314,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         if replyMode == .correction,
            intendedText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            panelController.showReplyTranslationError("Type the intended meaning in Japanese before reviewing the reply.")
+            panelController.showReplyTranslationError("Type the intended meaning before reviewing the reply.")
             return
         }
         guard let result = currentTranslationResult else {
             panelController.showReplyTranslationError("Translate original text before translating a reply.")
-            return
-        }
-        if replyMode == .correction, result.direction != .englishToJapanese {
-            panelController.showReplyTranslationError("Correction mode is only available when the original text is English.")
             return
         }
         guard translationTask == nil else {

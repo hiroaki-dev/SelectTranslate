@@ -49,8 +49,46 @@ enum PromptSettings {
     {{reply}}
     """
 
+    static let defaultReplyCorrectionTemplate = """
+    You are an English writing coach for a Japanese learner.
+
+    The user is replying in English to an English message that has already been translated into Japanese.
+    Use the original English message and the existing Japanese translation only as context for meaning, references, tone, and terminology.
+
+    Review the user's English reply draft.
+
+    Output in Japanese using this exact structure:
+
+    日本語訳:
+    <自然な日本語訳>
+
+    指摘:
+    - <英文として不自然な点、文法ミス、語彙、ニュアンスの問題を簡潔に指摘>
+    - 問題がない場合は「大きな問題はありません。」と書く
+
+    修正文:
+    <自然で正しい英語の返信文>
+
+    Rules:
+    - Do not translate or repeat the full original message.
+    - Do not translate or repeat the existing translation.
+    - Keep the corrected reply appropriate for the original context.
+    - Preserve URLs, code identifiers, and placeholders where possible.
+    - Do not use markdown fences.
+
+    Context original English text:
+    {{original}}
+
+    Context existing Japanese translation:
+    {{translation}}
+
+    English reply draft to review:
+    {{reply}}
+    """
+
     private static let templateDefaultsKey = "promptTemplate"
     private static let replyTemplateDefaultsKey = "replyPromptTemplate"
+    private static let replyCorrectionTemplateDefaultsKey = "replyCorrectionPromptTemplate"
     private static let shortcutProfilesDefaultsKey = "shortcutProfiles"
 
     static var template: String {
@@ -84,6 +122,18 @@ enum PromptSettings {
         }
     }
 
+    static var replyCorrectionTemplate: String {
+        get {
+            let savedTemplate = UserDefaults.standard.string(forKey: replyCorrectionTemplateDefaultsKey) ?? ""
+            return savedTemplate.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                ? defaultReplyCorrectionTemplate
+                : savedTemplate
+        }
+        set {
+            UserDefaults.standard.set(newValue, forKey: replyCorrectionTemplateDefaultsKey)
+        }
+    }
+
     static var defaultShortcutProfile: ShortcutProfile {
         shortcutProfiles.first ?? ShortcutProfile.defaultProfile(promptTemplate: legacyTemplate)
     }
@@ -113,6 +163,10 @@ enum PromptSettings {
 
     static func resetReplyTemplate() {
         replyTemplate = defaultReplyTemplate
+    }
+
+    static func resetReplyCorrectionTemplate() {
+        replyCorrectionTemplate = defaultReplyCorrectionTemplate
     }
 
     static func validationMessages(for profiles: [ShortcutProfile]) -> [String] {
@@ -188,6 +242,37 @@ enum PromptSettings {
 
         if !prompt.contains(translatedText) {
             prompt += "\n\nExisting \(direction.targetLanguage) translation:\n\(translatedText)"
+        }
+
+        return prompt
+    }
+
+    static func renderReplyCorrection(
+        template: String,
+        originalText: String,
+        translatedText: String,
+        replyDraft: String
+    ) -> String {
+        let trimmedTemplate = template.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            ? defaultReplyCorrectionTemplate
+            : template
+        var prompt = trimmedTemplate
+            .replacingOccurrences(of: replyOriginalToken, with: originalText)
+            .replacingOccurrences(of: replyTranslationToken, with: translatedText)
+            .replacingOccurrences(of: replyDraftToken, with: replyDraft)
+            .replacingOccurrences(of: replyTargetLanguageToken, with: "Japanese")
+            .replacingOccurrences(of: replySourceLanguageToken, with: "English")
+
+        if !prompt.contains(replyDraft) {
+            prompt += "\n\nEnglish reply draft to review:\n\(replyDraft)"
+        }
+
+        if !prompt.contains(originalText) {
+            prompt += "\n\nContext original English text:\n\(originalText)"
+        }
+
+        if !prompt.contains(translatedText) {
+            prompt += "\n\nContext existing Japanese translation:\n\(translatedText)"
         }
 
         return prompt

@@ -11,6 +11,7 @@ struct TranslationHistoryItem: Identifiable, Equatable {
     let directionLabel: String
     let replyDraftText: String
     let translatedReplyText: String
+    let replyMode: ReplyWorkflowMode
 
     var originalPreview: String {
         let lines = originalText.components(separatedBy: .newlines)
@@ -47,7 +48,7 @@ final class TranslationHistoryStore {
             try openDatabase()
             let sql = """
             SELECT id, created_at, original_text, translated_text, engine_label, provider_raw_value, direction_label,
-                   reply_draft_text, translated_reply_text
+                   reply_draft_text, translated_reply_text, reply_mode
             FROM translation_history
             ORDER BY created_at DESC, id DESC
             LIMIT ?;
@@ -69,7 +70,8 @@ final class TranslationHistoryStore {
                         providerRawValue: columnText(statement, 5),
                         directionLabel: columnText(statement, 6),
                         replyDraftText: columnText(statement, 7),
-                        translatedReplyText: columnText(statement, 8)
+                        translatedReplyText: columnText(statement, 8),
+                        replyMode: ReplyWorkflowMode(rawValue: columnText(statement, 9)) ?? .translation
                     )
                 )
             }
@@ -124,7 +126,8 @@ final class TranslationHistoryStore {
                 providerRawValue: providerRawValue,
                 directionLabel: directionLabel,
                 replyDraftText: "",
-                translatedReplyText: ""
+                translatedReplyText: "",
+                replyMode: .translation
             )
         } catch {
             NSLog("SelectTranslate history insert failed: \(error.localizedDescription)")
@@ -136,13 +139,14 @@ final class TranslationHistoryStore {
     func updateReply(
         id: Int64,
         replyDraftText: String,
-        translatedReplyText: String
+        translatedReplyText: String,
+        replyMode: ReplyWorkflowMode
     ) -> TranslationHistoryItem? {
         do {
             try openDatabase()
             let sql = """
             UPDATE translation_history
-            SET reply_draft_text = ?, translated_reply_text = ?
+            SET reply_draft_text = ?, translated_reply_text = ?, reply_mode = ?
             WHERE id = ?;
             """
             let statement = try prepare(sql)
@@ -150,7 +154,8 @@ final class TranslationHistoryStore {
 
             bindText(replyDraftText, to: statement, at: 1)
             bindText(translatedReplyText, to: statement, at: 2)
-            sqlite3_bind_int64(statement, 3, id)
+            bindText(replyMode.rawValue, to: statement, at: 3)
+            sqlite3_bind_int64(statement, 4, id)
 
             guard sqlite3_step(statement) == SQLITE_DONE else {
                 throw SQLiteHistoryError.step(message: lastErrorMessage)
@@ -209,6 +214,11 @@ final class TranslationHistoryStore {
             columnName: "translated_reply_text",
             definition: "TEXT NOT NULL DEFAULT ''"
         )
+        try addColumnIfNeeded(
+            tableName: "translation_history",
+            columnName: "reply_mode",
+            definition: "TEXT NOT NULL DEFAULT 'translation'"
+        )
         try execute("""
         CREATE INDEX IF NOT EXISTS idx_translation_history_created_at
         ON translation_history(created_at DESC, id DESC);
@@ -220,7 +230,7 @@ final class TranslationHistoryStore {
             try openDatabase()
             let sql = """
             SELECT id, created_at, original_text, translated_text, engine_label, provider_raw_value, direction_label,
-                   reply_draft_text, translated_reply_text
+                   reply_draft_text, translated_reply_text, reply_mode
             FROM translation_history
             WHERE id = ?
             LIMIT 1;
@@ -243,7 +253,8 @@ final class TranslationHistoryStore {
                 providerRawValue: columnText(statement, 5),
                 directionLabel: columnText(statement, 6),
                 replyDraftText: columnText(statement, 7),
-                translatedReplyText: columnText(statement, 8)
+                translatedReplyText: columnText(statement, 8),
+                replyMode: ReplyWorkflowMode(rawValue: columnText(statement, 9)) ?? .translation
             )
         } catch {
             NSLog("SelectTranslate history item load failed: \(error.localizedDescription)")

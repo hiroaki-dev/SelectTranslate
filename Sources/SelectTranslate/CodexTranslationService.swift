@@ -184,6 +184,45 @@ final class CodexTranslationService {
         }
     }
 
+    func correctReply(
+        draft: String,
+        context: ReplyTranslationContext,
+        effort: ReasoningEffort,
+        provider: TranslationProvider,
+        onPartialResult: @escaping TranslationProgressHandler = { _ in }
+    ) async throws -> String {
+        guard context.direction == .englishToJapanese else {
+            throw TranslationServiceError.invalidConfiguration(
+                provider: provider,
+                message: "Reply correction is only available when the original text is English."
+            )
+        }
+
+        let prompt = PromptSettings.renderReplyCorrection(
+            template: PromptSettings.replyCorrectionTemplate,
+            originalText: context.originalText,
+            translatedText: context.translatedText,
+            replyDraft: draft
+        )
+        switch provider {
+        case .codex:
+            return try await translatePromptWithCodex(prompt, effort: effort)
+        case .claude:
+            return try await translatePromptWithClaude(prompt, effort: effort)
+        case .plamo:
+            throw TranslationServiceError.invalidConfiguration(
+                provider: .plamo,
+                message: "Reply correction is not available with PLaMo."
+            )
+        case .openAICompatible:
+            return try await translatePromptWithOpenAICompatibleAPI(
+                prompt,
+                systemMessage: "You are an English writing coach for a Japanese learner. Follow the requested output structure exactly.",
+                onPartialResult: onPartialResult
+            )
+        }
+    }
+
     private func translatePromptWithCodex(
         _ prompt: String,
         effort: ReasoningEffort
@@ -457,6 +496,7 @@ final class CodexTranslationService {
 
     private func translatePromptWithOpenAICompatibleAPI(
         _ prompt: String,
+        systemMessage: String = "You are a precise translation engine. Return only the translated text. Do not add explanations, alternatives, labels, quotes, or notes.",
         onPartialResult: @escaping TranslationProgressHandler
     ) async throws -> String {
         let configuration = OpenAICompatibleConfiguration.current()
@@ -498,7 +538,7 @@ final class CodexTranslationService {
                 messages: [
                     .init(
                         role: "system",
-                        content: "You are a precise translation engine. Return only the translated text. Do not add explanations, alternatives, labels, quotes, or notes."
+                        content: systemMessage
                     ),
                     .init(
                         role: "user",

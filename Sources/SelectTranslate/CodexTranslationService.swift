@@ -186,6 +186,7 @@ final class CodexTranslationService {
 
     func correctReply(
         draft: String,
+        intendedText: String,
         context: ReplyTranslationContext,
         effort: ReasoningEffort,
         provider: TranslationProvider,
@@ -202,6 +203,7 @@ final class CodexTranslationService {
             template: PromptSettings.replyCorrectionTemplate,
             originalText: context.originalText,
             translatedText: context.translatedText,
+            intendedText: intendedText,
             replyDraft: draft
         )
         switch provider {

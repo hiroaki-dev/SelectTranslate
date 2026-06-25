@@ -554,7 +554,7 @@ private struct SettingsView: View {
                     .help("Restore the default prompt")
             }
 
-            Text("Available tokens: {{original}}, {{translation}}, {{reply}}, {{target_language}}, {{source_language}}")
+            Text("Available tokens: {{original}}, {{translation}}, {{reply}}, {{intended}}, {{target_language}}, {{source_language}}")
                 .font(.system(size: 12))
                 .foregroundStyle(.secondary)
                 .textSelection(.enabled)

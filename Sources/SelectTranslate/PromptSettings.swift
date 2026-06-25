@@ -6,6 +6,7 @@ enum PromptSettings {
     static let replyOriginalToken = "{{original}}"
     static let replyTranslationToken = "{{translation}}"
     static let replyDraftToken = "{{reply}}"
+    static let replyIntendedToken = "{{intended}}"
     static let replyTargetLanguageToken = "{{target_language}}"
     static let replySourceLanguageToken = "{{source_language}}"
 
@@ -53,9 +54,10 @@ enum PromptSettings {
     You are an English writing coach for a Japanese learner.
 
     The user is replying in English to an English message that has already been translated into Japanese.
-    Use the original English message and the existing Japanese translation only as context for meaning, references, tone, and terminology.
+    The user also provides the intended meaning in Japanese.
+    Use the original English message, the existing Japanese translation, and the intended Japanese meaning as context for meaning, references, tone, and terminology.
 
-    Review the user's English reply draft.
+    Review whether the user's English reply draft accurately communicates the intended Japanese meaning in the original context.
 
     Output in Japanese using this exact structure:
 
@@ -63,7 +65,7 @@ enum PromptSettings {
     <自然な日本語訳>
 
     指摘:
-    - <英文として不自然な点、文法ミス、語彙、ニュアンスの問題を簡潔に指摘>
+    - <意図とずれている点、英文として不自然な点、文法ミス、語彙、ニュアンスの問題を簡潔に指摘>
     - 問題がない場合は「大きな問題はありません。」と書く
 
     修正文:
@@ -72,7 +74,7 @@ enum PromptSettings {
     Rules:
     - Do not translate or repeat the full original message.
     - Do not translate or repeat the existing translation.
-    - Keep the corrected reply appropriate for the original context.
+    - Keep the corrected reply faithful to the intended Japanese meaning and appropriate for the original context.
     - Preserve URLs, code identifiers, and placeholders where possible.
     - Do not use markdown fences.
 
@@ -81,6 +83,9 @@ enum PromptSettings {
 
     Context existing Japanese translation:
     {{translation}}
+
+    Intended meaning in Japanese:
+    {{intended}}
 
     English reply draft to review:
     {{reply}}
@@ -251,6 +256,7 @@ enum PromptSettings {
         template: String,
         originalText: String,
         translatedText: String,
+        intendedText: String,
         replyDraft: String
     ) -> String {
         let trimmedTemplate = template.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
@@ -260,6 +266,7 @@ enum PromptSettings {
             .replacingOccurrences(of: replyOriginalToken, with: originalText)
             .replacingOccurrences(of: replyTranslationToken, with: translatedText)
             .replacingOccurrences(of: replyDraftToken, with: replyDraft)
+            .replacingOccurrences(of: replyIntendedToken, with: intendedText)
             .replacingOccurrences(of: replyTargetLanguageToken, with: "Japanese")
             .replacingOccurrences(of: replySourceLanguageToken, with: "English")
 
@@ -273,6 +280,10 @@ enum PromptSettings {
 
         if !prompt.contains(translatedText) {
             prompt += "\n\nContext existing Japanese translation:\n\(translatedText)"
+        }
+
+        if !prompt.contains(intendedText) {
+            prompt += "\n\nIntended meaning in Japanese:\n\(intendedText)"
         }
 
         return prompt

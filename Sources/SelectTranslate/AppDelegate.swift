@@ -306,9 +306,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func startReplyTranslation() {
         let draft = panelController.replyDraftText
+        let intendedText = panelController.replyIntentText
         let replyMode: ReplyWorkflowMode = panelController.isReplyCorrectionEnabled ? .correction : .translation
         guard !draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             panelController.showReplyTranslationError("Type a reply before translating it.")
+            return
+        }
+        if replyMode == .correction,
+           intendedText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            panelController.showReplyTranslationError("Type the intended meaning in Japanese before reviewing the reply.")
             return
         }
         guard let result = currentTranslationResult else {
@@ -329,6 +335,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             defer { self.translationTask = nil }
             await self.translateReply(
                 draft: draft,
+                intendedText: intendedText,
                 result: result,
                 effort: self.panelController.reasoningEffort,
                 provider: self.panelController.translationProvider,
@@ -676,6 +683,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func translateReply(
         draft: String,
+        intendedText: String,
         result: TranslationResult,
         effort: ReasoningEffort,
         provider: TranslationProvider,
@@ -704,6 +712,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 panelController.showReplyCorrectionLoading()
                 translatedReply = try await translator.correctReply(
                     draft: draft,
+                    intendedText: intendedText,
                     context: context,
                     effort: effort,
                     provider: provider,
@@ -717,6 +726,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                let updatedItem = historyStore.updateReply(
                    id: currentHistoryItemID,
                    replyDraftText: draft,
+                   replyIntentText: replyMode == .correction ? intendedText : "",
                    translatedReplyText: translatedReply,
                    replyMode: replyMode
                ) {

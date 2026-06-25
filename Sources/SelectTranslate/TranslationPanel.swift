@@ -15,6 +15,7 @@ final class TranslationPanelModel: ObservableObject {
     @Published var backTranslatedText: String = ""
     @Published var backTranslationMessage: String = ""
     @Published var replyDraftText: String = ""
+    @Published var replyIntentText: String = ""
     @Published var translatedReplyText: String = ""
     @Published var replyTranslationMessage: String = ""
     @Published var replyBackTranslatedText: String = ""
@@ -114,18 +115,22 @@ final class TranslationPanelModel: ObservableObject {
         clearReplyState(clearDraft: false)
     }
 
+    func updateReplyIntentTextFromUser(_ text: String) {
+        guard replyIntentText != text else { return }
+
+        replyIntentText = text
+        guard text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            return
+        }
+
+        clearReplyResultState()
+    }
+
     func setReplyCorrectionEnabled(_ isEnabled: Bool) {
         guard isReplyCorrectionEnabled != isEnabled else { return }
 
         isReplyCorrectionEnabled = isEnabled
-        translatedReplyText = ""
-        replyTranslationMessage = ""
-        replyBackTranslatedText = ""
-        replyBackTranslationMessage = ""
-        isReplyTranslating = false
-        isReplyBackTranslating = false
-        isReplyTranslationError = false
-        isReplyBackTranslationError = false
+        clearReplyResultState()
     }
 
     func setHistoryItems(_ items: [TranslationHistoryItem]) {
@@ -162,6 +167,7 @@ final class TranslationPanelModel: ObservableObject {
         backTranslatedText = ""
         backTranslationMessage = ""
         replyDraftText = item.replyDraftText
+        replyIntentText = item.replyIntentText
         translatedReplyText = item.translatedReplyText
         replyTranslationMessage = ""
         replyBackTranslatedText = ""
@@ -205,8 +211,13 @@ final class TranslationPanelModel: ObservableObject {
     func clearReplyState(clearDraft: Bool) {
         if clearDraft {
             replyDraftText = ""
+            replyIntentText = ""
             isReplyCorrectionEnabled = false
         }
+        clearReplyResultState()
+    }
+
+    private func clearReplyResultState() {
         translatedReplyText = ""
         replyTranslationMessage = ""
         replyBackTranslatedText = ""
@@ -254,6 +265,10 @@ final class TranslationPanelController {
 
     var replyDraftText: String {
         model.replyDraftText
+    }
+
+    var replyIntentText: String {
+        model.replyIntentText
     }
 
     var translatedReplyText: String {
@@ -892,7 +907,7 @@ private struct TranslationOverlayView: View {
 
             if shouldShowReplyWorkflow {
                 replyWorkflow
-                    .frame(height: shouldShowReplyBackTranslation ? 300 : 190)
+                    .frame(height: replyWorkflowHeight)
             } else if shouldShowPlamoReplyUnavailableMessage {
                 plamoReplyUnavailableMessage
             }
@@ -1042,6 +1057,7 @@ private struct TranslationOverlayView: View {
             (
                 model.canBackTranslate ||
                     !model.replyDraftText.isEmpty ||
+                    !model.replyIntentText.isEmpty ||
                     !model.translatedReplyText.isEmpty ||
                     !model.replyTranslationMessage.isEmpty ||
                     model.isReplyCorrectionEnabled
@@ -1066,7 +1082,9 @@ private struct TranslationOverlayView: View {
             model.translationProvider != .plamo &&
             model.canBackTranslate &&
             (!model.isReplyCorrectionEnabled || isReplyCorrectionAvailable) &&
-            !model.replyDraftText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            !model.replyDraftText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty &&
+            (!model.isReplyCorrectionEnabled ||
+                !model.replyIntentText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
     }
 
     private var canBackTranslateReply: Bool {
@@ -1086,6 +1104,16 @@ private struct TranslationOverlayView: View {
         model.isReplyBackTranslating ||
             !model.replyBackTranslatedText.isEmpty ||
             !model.replyBackTranslationMessage.isEmpty
+    }
+
+    private var replyWorkflowHeight: CGFloat {
+        if shouldShowReplyBackTranslation {
+            return 300
+        }
+        if model.isReplyCorrectionEnabled {
+            return 300
+        }
+        return 190
     }
 
     private var plamoReplyUnavailableMessage: some View {
@@ -1165,6 +1193,24 @@ private struct TranslationOverlayView: View {
                 isDisabled: isBusy,
                 onSubmit: translateReply
             )
+
+            if model.isReplyCorrectionEnabled {
+                Text("Intended meaning (Japanese)")
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .padding(.top, 4)
+
+                commandReturnTextBox(
+                    text: Binding(
+                        get: { model.replyIntentText },
+                        set: { model.updateReplyIntentTextFromUser($0) }
+                    ),
+                    placeholder: "日本語で本来言いたい内容を書く",
+                    isDisabled: isBusy,
+                    onSubmit: translateReply
+                )
+            }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }

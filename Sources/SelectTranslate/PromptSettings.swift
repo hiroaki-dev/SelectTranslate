@@ -6,6 +6,7 @@ enum PromptSettings {
     static let replyOriginalToken = "{{original}}"
     static let replyTranslationToken = "{{translation}}"
     static let replyDraftToken = "{{reply}}"
+    static let replyIntendedToken = "{{intended}}"
     static let replyTargetLanguageToken = "{{target_language}}"
     static let replySourceLanguageToken = "{{source_language}}"
 
@@ -49,8 +50,50 @@ enum PromptSettings {
     {{reply}}
     """
 
+    static let defaultReplyCorrectionTemplate = """
+    You are a writing coach for a language learner.
+
+    The user is replying in {{source_language}} to a {{source_language}} message that has already been translated into {{target_language}}.
+    The user also provides the intended meaning in {{target_language}}.
+    Use the original {{source_language}} message, the existing {{target_language}} translation, and the intended {{target_language}} meaning as context for meaning, references, tone, and terminology.
+
+    Review whether the user's {{source_language}} reply draft accurately communicates the intended {{target_language}} meaning in the original context.
+
+    Output in {{target_language}} with these sections:
+
+    Draft meaning:
+    <Natural {{target_language}} rendering of the reply draft>
+
+    Issues:
+    - <Briefly point out meaning mismatches, unnatural wording, grammar, vocabulary, nuance, or tone issues>
+    - If there are no major issues, say so
+
+    Corrected reply:
+    <A natural and correct {{source_language}} reply>
+
+    Rules:
+    - Do not translate or repeat the full original message.
+    - Do not translate or repeat the existing translation.
+    - Keep the corrected reply faithful to the intended {{target_language}} meaning and appropriate for the original context.
+    - Preserve URLs, code identifiers, and placeholders where possible.
+    - Do not use markdown fences.
+
+    Context original {{source_language}} text:
+    {{original}}
+
+    Context existing {{target_language}} translation:
+    {{translation}}
+
+    Intended meaning in {{target_language}}:
+    {{intended}}
+
+    {{source_language}} reply draft to review:
+    {{reply}}
+    """
+
     private static let templateDefaultsKey = "promptTemplate"
     private static let replyTemplateDefaultsKey = "replyPromptTemplate"
+    private static let replyCorrectionTemplateDefaultsKey = "replyCorrectionPromptTemplate"
     private static let shortcutProfilesDefaultsKey = "shortcutProfiles"
 
     static var template: String {
@@ -84,6 +127,18 @@ enum PromptSettings {
         }
     }
 
+    static var replyCorrectionTemplate: String {
+        get {
+            let savedTemplate = UserDefaults.standard.string(forKey: replyCorrectionTemplateDefaultsKey) ?? ""
+            return savedTemplate.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                ? defaultReplyCorrectionTemplate
+                : savedTemplate
+        }
+        set {
+            UserDefaults.standard.set(newValue, forKey: replyCorrectionTemplateDefaultsKey)
+        }
+    }
+
     static var defaultShortcutProfile: ShortcutProfile {
         shortcutProfiles.first ?? ShortcutProfile.defaultProfile(promptTemplate: legacyTemplate)
     }
@@ -113,6 +168,10 @@ enum PromptSettings {
 
     static func resetReplyTemplate() {
         replyTemplate = defaultReplyTemplate
+    }
+
+    static func resetReplyCorrectionTemplate() {
+        replyCorrectionTemplate = defaultReplyCorrectionTemplate
     }
 
     static func validationMessages(for profiles: [ShortcutProfile]) -> [String] {
@@ -188,6 +247,44 @@ enum PromptSettings {
 
         if !prompt.contains(translatedText) {
             prompt += "\n\nExisting \(direction.targetLanguage) translation:\n\(translatedText)"
+        }
+
+        return prompt
+    }
+
+    static func renderReplyCorrection(
+        template: String,
+        originalText: String,
+        translatedText: String,
+        intendedText: String,
+        replyDraft: String,
+        direction: TranslationDirection
+    ) -> String {
+        let trimmedTemplate = template.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            ? defaultReplyCorrectionTemplate
+            : template
+        var prompt = trimmedTemplate
+            .replacingOccurrences(of: replyOriginalToken, with: originalText)
+            .replacingOccurrences(of: replyTranslationToken, with: translatedText)
+            .replacingOccurrences(of: replyDraftToken, with: replyDraft)
+            .replacingOccurrences(of: replyIntendedToken, with: intendedText)
+            .replacingOccurrences(of: replyTargetLanguageToken, with: direction.targetLanguage)
+            .replacingOccurrences(of: replySourceLanguageToken, with: direction.sourceLanguage)
+
+        if !prompt.contains(replyDraft) {
+            prompt += "\n\n\(direction.sourceLanguage) reply draft to review:\n\(replyDraft)"
+        }
+
+        if !prompt.contains(originalText) {
+            prompt += "\n\nContext original \(direction.sourceLanguage) text:\n\(originalText)"
+        }
+
+        if !prompt.contains(translatedText) {
+            prompt += "\n\nContext existing \(direction.targetLanguage) translation:\n\(translatedText)"
+        }
+
+        if !prompt.contains(intendedText) {
+            prompt += "\n\nIntended meaning in \(direction.targetLanguage):\n\(intendedText)"
         }
 
         return prompt

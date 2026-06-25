@@ -78,6 +78,11 @@ private final class SettingsModel: ObservableObject {
             PromptSettings.replyTemplate = replyPromptTemplate
         }
     }
+    @Published var replyCorrectionPromptTemplate: String {
+        didSet {
+            PromptSettings.replyCorrectionTemplate = replyCorrectionPromptTemplate
+        }
+    }
     @Published var isAPIKeyVisible: Bool = false
     @Published var isPlamoReady: Bool
     @Published var isPreparingPlamo: Bool = false
@@ -104,6 +109,7 @@ private final class SettingsModel: ObservableObject {
         apiModel = OpenAICompatibleSettings.model
         claudeModel = ClaudeSettings.model
         replyPromptTemplate = PromptSettings.replyTemplate
+        replyCorrectionPromptTemplate = PromptSettings.replyCorrectionTemplate
         let plamoReady = PlamoSetupService.isSetupComplete
         isPlamoReady = plamoReady
         translationProvider = TranslationPreferences.translationProvider
@@ -172,6 +178,11 @@ private final class SettingsModel: ObservableObject {
     func resetReplyPrompt() {
         PromptSettings.resetReplyTemplate()
         replyPromptTemplate = PromptSettings.replyTemplate
+    }
+
+    func resetReplyCorrectionPrompt() {
+        PromptSettings.resetReplyCorrectionTemplate()
+        replyCorrectionPromptTemplate = PromptSettings.replyCorrectionTemplate
     }
 
     func updateSelectedShortcutName(_ name: String) {
@@ -500,44 +511,67 @@ private struct SettingsView: View {
     private var promptsSettings: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 14) {
-                HStack(alignment: .firstTextBaseline) {
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text("Reply translation prompt")
-                            .font(.system(size: 14, weight: .semibold))
-                        Text("Used when translating a reply draft back into the original language with the original text and first translation as context.")
-                            .font(.system(size: 12))
-                            .foregroundStyle(.secondary)
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
+                promptEditor(
+                    title: "Reply translation prompt",
+                    description: "Used when translating a reply draft back into the original language with the original text and first translation as context.",
+                    text: $model.replyPromptTemplate,
+                    reset: model.resetReplyPrompt
+                )
 
-                    Spacer()
+                Divider()
 
-                    Button("Reset Prompt") {
-                        model.resetReplyPrompt()
-                    }
-                    .help("Restore the default reply translation prompt")
-                }
-
-                Text("Available tokens: {{original}}, {{translation}}, {{reply}}, {{target_language}}, {{source_language}}")
-                    .font(.system(size: 12))
-                    .foregroundStyle(.secondary)
-                    .textSelection(.enabled)
-
-                TextEditor(text: $model.replyPromptTemplate)
-                    .font(.system(size: 13, design: .monospaced))
-                    .scrollContentBackground(.hidden)
-                    .padding(8)
-                    .background(
-                        RoundedRectangle(cornerRadius: 8)
-                            .fill(Color(nsColor: .textBackgroundColor))
-                    )
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 8)
-                            .stroke(Color(nsColor: .separatorColor), lineWidth: 1)
-                    )
-                    .frame(minHeight: 420)
+                promptEditor(
+                    title: "Reply correction prompt",
+                    description: "Used by Correction mode. It reviews a reply draft in the original language against the intended meaning in the translated language.",
+                    text: $model.replyCorrectionPromptTemplate,
+                    reset: model.resetReplyCorrectionPrompt
+                )
             }
             .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+
+    private func promptEditor(
+        title: String,
+        description: String,
+        text: Binding<String>,
+        reset: @escaping () -> Void
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(alignment: .firstTextBaseline) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(title)
+                        .font(.system(size: 14, weight: .semibold))
+                    Text(description)
+                        .font(.system(size: 12))
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+
+                Spacer()
+
+                Button("Reset Prompt", action: reset)
+                    .help("Restore the default prompt")
+            }
+
+            Text("Available tokens: {{original}}, {{translation}}, {{reply}}, {{intended}}, {{target_language}}, {{source_language}}")
+                .font(.system(size: 12))
+                .foregroundStyle(.secondary)
+                .textSelection(.enabled)
+
+            TextEditor(text: text)
+                .font(.system(size: 13, design: .monospaced))
+                .scrollContentBackground(.hidden)
+                .padding(8)
+                .background(
+                    RoundedRectangle(cornerRadius: 8)
+                        .fill(Color(nsColor: .textBackgroundColor))
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 8)
+                        .stroke(Color(nsColor: .separatorColor), lineWidth: 1)
+                )
+                .frame(minHeight: 300)
         }
     }
 

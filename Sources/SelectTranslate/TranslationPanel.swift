@@ -19,6 +19,7 @@ final class TranslationPanelModel: ObservableObject {
     @Published var replyTranslationMessage: String = ""
     @Published var replyBackTranslatedText: String = ""
     @Published var replyBackTranslationMessage: String = ""
+    @Published var isReplyCorrectionEnabled: Bool = false
     @Published var isLoading: Bool = false
     @Published var isBackTranslating: Bool = false
     @Published var isReplyTranslating: Bool = false
@@ -31,6 +32,7 @@ final class TranslationPanelModel: ObservableObject {
     @Published var historyItems: [TranslationHistoryItem] = []
     @Published var selectedHistoryID: Int64?
     @Published var isPlamoReady: Bool
+    @Published var currentDirection: TranslationDirection? = nil
     @Published var reasoningEffort: ReasoningEffort {
         didSet {
             UserDefaults.standard.set(reasoningEffort.rawValue, forKey: Self.effortDefaultsKey)
@@ -112,6 +114,20 @@ final class TranslationPanelModel: ObservableObject {
         clearReplyState(clearDraft: false)
     }
 
+    func setReplyCorrectionEnabled(_ isEnabled: Bool) {
+        guard isReplyCorrectionEnabled != isEnabled else { return }
+
+        isReplyCorrectionEnabled = isEnabled
+        translatedReplyText = ""
+        replyTranslationMessage = ""
+        replyBackTranslatedText = ""
+        replyBackTranslationMessage = ""
+        isReplyTranslating = false
+        isReplyBackTranslating = false
+        isReplyTranslationError = false
+        isReplyBackTranslationError = false
+    }
+
     func setHistoryItems(_ items: [TranslationHistoryItem]) {
         historyItems = items
         if let selectedHistoryID, !items.contains(where: { $0.id == selectedHistoryID }) {
@@ -150,6 +166,8 @@ final class TranslationPanelModel: ObservableObject {
         replyTranslationMessage = ""
         replyBackTranslatedText = ""
         replyBackTranslationMessage = ""
+        isReplyCorrectionEnabled = item.replyMode == .correction
+        currentDirection = TranslationDirection.detect(item.originalText)
         isLoading = false
         isBackTranslating = false
         isReplyTranslating = false
@@ -171,6 +189,7 @@ final class TranslationPanelModel: ObservableObject {
         backTranslatedText = ""
         backTranslationMessage = ""
         clearReplyState(clearDraft: true)
+        currentDirection = nil
         isLoading = false
         isBackTranslating = false
         isReplyTranslating = false
@@ -186,6 +205,7 @@ final class TranslationPanelModel: ObservableObject {
     func clearReplyState(clearDraft: Bool) {
         if clearDraft {
             replyDraftText = ""
+            isReplyCorrectionEnabled = false
         }
         translatedReplyText = ""
         replyTranslationMessage = ""
@@ -240,6 +260,10 @@ final class TranslationPanelController {
         model.translatedReplyText
     }
 
+    var isReplyCorrectionEnabled: Bool {
+        model.isReplyCorrectionEnabled
+    }
+
     func setTranslationProvider(_ provider: TranslationProvider) {
         model.translationProvider = provider
     }
@@ -268,6 +292,10 @@ final class TranslationPanelController {
         model.clearReplyState(clearDraft: clearDraft)
     }
 
+    func setReplyCorrectionEnabled(_ isEnabled: Bool) {
+        model.setReplyCorrectionEnabled(isEnabled)
+    }
+
     func showHistoryItem(_ item: TranslationHistoryItem) {
         model.showHistoryItem(item)
         showPanel()
@@ -286,6 +314,7 @@ final class TranslationPanelController {
     ) {
         model.sourceText = source
         model.translatedText = ""
+        model.currentDirection = direction
         model.directionLabel = Self.contextLabel(direction: direction, shortcutProfile: shortcutProfile)
         model.title = "Translating"
         model.message = Self.loadingMessage(provider: provider)
@@ -312,6 +341,7 @@ final class TranslationPanelController {
     ) {
         model.sourceText = source
         model.translatedText = translation
+        model.currentDirection = direction
         model.directionLabel = Self.contextLabel(direction: direction, shortcutProfile: shortcutProfile)
         model.title = "\(provider.label) Translate"
         model.message = ""
@@ -340,6 +370,7 @@ final class TranslationPanelController {
         model.sourceText = source ?? ""
         model.translatedText = ""
         model.directionLabel = ""
+        model.currentDirection = nil
         model.title = title
         model.message = message
         model.backTranslatedText = ""
@@ -361,6 +392,7 @@ final class TranslationPanelController {
     func showPreparationLoading(title: String, message: String) {
         model.translatedText = ""
         model.directionLabel = ""
+        model.currentDirection = nil
         model.title = title
         model.message = message
         model.backTranslatedText = ""
@@ -412,6 +444,18 @@ final class TranslationPanelController {
     func showReplyTranslationLoading(targetLanguage: String) {
         model.translatedReplyText = ""
         model.replyTranslationMessage = "Translating the reply into \(targetLanguage)."
+        model.replyBackTranslatedText = ""
+        model.replyBackTranslationMessage = ""
+        model.isReplyTranslating = true
+        model.isReplyBackTranslating = false
+        model.isReplyTranslationError = false
+        model.isReplyBackTranslationError = false
+        showPanel()
+    }
+
+    func showReplyCorrectionLoading() {
+        model.translatedReplyText = ""
+        model.replyTranslationMessage = "Reviewing the English reply."
         model.replyBackTranslatedText = ""
         model.replyBackTranslationMessage = ""
         model.isReplyTranslating = true
@@ -485,6 +529,7 @@ final class TranslationPanelController {
         }
 
         model.directionLabel = PromptSettings.defaultShortcutProfile.shortcutLabel
+        model.currentDirection = nil
         model.title = "SelectTranslate is Running"
         model.message = ""
         model.backTranslatedText = ""
@@ -722,7 +767,7 @@ private struct TranslationOverlayView: View {
                     .font(.system(size: 12, weight: .medium))
                     .foregroundStyle(.primary)
                     .lineLimit(1)
-                Text(item.engineLabel)
+                Text("\(item.engineLabel)\(item.replyMode.historySuffix)")
                     .font(.system(size: 11))
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
@@ -998,7 +1043,8 @@ private struct TranslationOverlayView: View {
                 model.canBackTranslate ||
                     !model.replyDraftText.isEmpty ||
                     !model.translatedReplyText.isEmpty ||
-                    !model.replyTranslationMessage.isEmpty
+                    !model.replyTranslationMessage.isEmpty ||
+                    model.isReplyCorrectionEnabled
             )
     }
 
@@ -1019,13 +1065,21 @@ private struct TranslationOverlayView: View {
         !isBusy &&
             model.translationProvider != .plamo &&
             model.canBackTranslate &&
+            (!model.isReplyCorrectionEnabled || isReplyCorrectionAvailable) &&
             !model.replyDraftText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
     private var canBackTranslateReply: Bool {
         !isBusy &&
             model.translationProvider != .plamo &&
+            !model.isReplyCorrectionEnabled &&
             !model.translatedReplyText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    private var isReplyCorrectionAvailable: Bool {
+        model.translationProvider != .plamo &&
+            model.currentDirection == .englishToJapanese &&
+            model.canBackTranslate
     }
 
     private var shouldShowReplyBackTranslation: Bool {
@@ -1067,6 +1121,20 @@ private struct TranslationOverlayView: View {
                         .controlSize(.small)
                 }
                 Spacer()
+                Toggle(
+                    "Correction mode",
+                    isOn: Binding(
+                        get: { model.isReplyCorrectionEnabled },
+                        set: { model.setReplyCorrectionEnabled($0) }
+                    )
+                )
+                .toggleStyle(.switch)
+                .controlSize(.small)
+                .disabled(!isReplyCorrectionAvailable || isBusy)
+                .help(isReplyCorrectionAvailable
+                    ? "Review an English reply draft for Japanese learners"
+                    : "Correction mode is available when the original text is English"
+                )
             }
             .frame(height: 20)
 
@@ -1091,7 +1159,9 @@ private struct TranslationOverlayView: View {
                     get: { model.replyDraftText },
                     set: { model.updateReplyDraftTextFromUser($0) }
                 ),
-                placeholder: "Write a reply, then press Command + Return.",
+                placeholder: model.isReplyCorrectionEnabled
+                    ? "Write an English reply, then press Command + Return."
+                    : "Write a reply, then press Command + Return.",
                 isDisabled: isBusy,
                 onSubmit: translateReply
             )
@@ -1109,7 +1179,7 @@ private struct TranslationOverlayView: View {
             }
             .buttonStyle(.plain)
             .disabled(!canTranslateReply)
-            .help("Translate reply with context")
+            .help(model.isReplyCorrectionEnabled ? "Review reply with context" : "Translate reply with context")
             Spacer()
         }
         .frame(width: 34)
@@ -1119,12 +1189,12 @@ private struct TranslationOverlayView: View {
     private var translatedReplyPane: some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack {
-                Text("Translated reply")
+                Text(model.isReplyCorrectionEnabled ? ReplyWorkflowMode.correction.resultTitle : ReplyWorkflowMode.translation.resultTitle)
                     .font(.system(size: 12, weight: .medium))
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
                 Spacer()
-                if !model.translatedReplyText.isEmpty {
+                if !model.translatedReplyText.isEmpty, !model.isReplyCorrectionEnabled {
                     Button(action: backTranslateReply) {
                         Image(systemName: "arrow.triangle.2.circlepath")
                             .frame(width: 22, height: 22)
@@ -1132,7 +1202,9 @@ private struct TranslationOverlayView: View {
                     .buttonStyle(.plain)
                     .disabled(!canBackTranslateReply)
                     .help("Translate reply back to the draft language")
+                }
 
+                if !model.translatedReplyText.isEmpty {
                     Button {
                         NSPasteboard.general.clearContents()
                         NSPasteboard.general.setString(model.translatedReplyText, forType: .string)
@@ -1189,7 +1261,7 @@ private struct TranslationOverlayView: View {
 
     private var replyTranslationPlaceholder: String {
         model.replyTranslationMessage.isEmpty
-            ? "Translated reply will appear here."
+            ? (model.isReplyCorrectionEnabled ? "Correction result will appear here." : "Translated reply will appear here.")
             : model.replyTranslationMessage
     }
 

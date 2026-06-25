@@ -306,12 +306,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func startReplyTranslation() {
         let draft = panelController.replyDraftText
+        let replyMode: ReplyWorkflowMode = panelController.isReplyCorrectionEnabled ? .correction : .translation
         guard !draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             panelController.showReplyTranslationError("Type a reply before translating it.")
             return
         }
         guard let result = currentTranslationResult else {
             panelController.showReplyTranslationError("Translate original text before translating a reply.")
+            return
+        }
+        if replyMode == .correction, result.direction != .englishToJapanese {
+            panelController.showReplyTranslationError("Correction mode is only available when the original text is English.")
             return
         }
         guard translationTask == nil else {
@@ -326,7 +331,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 draft: draft,
                 result: result,
                 effort: self.panelController.reasoningEffort,
-                provider: self.panelController.translationProvider
+                provider: self.panelController.translationProvider,
+                replyMode: replyMode
             )
         }
     }
@@ -672,29 +678,47 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         draft: String,
         result: TranslationResult,
         effort: ReasoningEffort,
-        provider: TranslationProvider
+        provider: TranslationProvider,
+        replyMode: ReplyWorkflowMode
     ) async {
         do {
-            panelController.showReplyTranslationLoading(targetLanguage: result.direction.sourceLanguage)
-            let translatedReply = try await translator.translateReply(
-                draft: draft,
-                context: ReplyTranslationContext(
-                    originalText: result.sourceText,
-                    translatedText: result.translatedText,
-                    direction: result.direction
-                ),
-                effort: effort,
-                provider: provider,
-                onPartialResult: { [weak self] partialText in
-                    self?.panelController.showStreamingReplyTranslation(partialText)
-                }
+            let context = ReplyTranslationContext(
+                originalText: result.sourceText,
+                translatedText: result.translatedText,
+                direction: result.direction
             )
+            let translatedReply: String
+            switch replyMode {
+            case .translation:
+                panelController.showReplyTranslationLoading(targetLanguage: result.direction.sourceLanguage)
+                translatedReply = try await translator.translateReply(
+                    draft: draft,
+                    context: context,
+                    effort: effort,
+                    provider: provider,
+                    onPartialResult: { [weak self] partialText in
+                        self?.panelController.showStreamingReplyTranslation(partialText)
+                    }
+                )
+            case .correction:
+                panelController.showReplyCorrectionLoading()
+                translatedReply = try await translator.correctReply(
+                    draft: draft,
+                    context: context,
+                    effort: effort,
+                    provider: provider,
+                    onPartialResult: { [weak self] partialText in
+                        self?.panelController.showStreamingReplyTranslation(partialText)
+                    }
+                )
+            }
             panelController.showReplyTranslationResult(translatedReply)
             if let currentHistoryItemID,
                let updatedItem = historyStore.updateReply(
                    id: currentHistoryItemID,
                    replyDraftText: draft,
-                   translatedReplyText: translatedReply
+                   translatedReplyText: translatedReply,
+                   replyMode: replyMode
                ) {
                 panelController.updateHistoryItem(updatedItem)
             }

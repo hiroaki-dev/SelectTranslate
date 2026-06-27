@@ -277,7 +277,8 @@ final class CodexTranslationService {
         effort: ReasoningEffort
     ) async throws -> String {
         let model = CodexSettings.model
-        return try await Task.detached(priority: .userInitiated) { [workspaceURL, effort, model, prompt] in
+        let processBox = CancellableProcessBox()
+        let task = Task.detached(priority: .userInitiated) { [workspaceURL, effort, model, prompt, processBox] in
             try FileManager.default.createDirectory(at: workspaceURL, withIntermediateDirectories: true)
 
             let outputURL = FileManager.default.temporaryDirectory
@@ -288,6 +289,9 @@ final class CodexTranslationService {
             }
 
             let process = Process()
+            processBox.set(process)
+            defer { processBox.clear(process) }
+
             process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
             process.currentDirectoryURL = workspaceURL
             var arguments = [
@@ -318,6 +322,7 @@ final class CodexTranslationService {
             process.standardOutput = stdout
             process.standardError = stderr
 
+            try Task.checkCancellation()
             try process.run()
             if let data = prompt.data(using: .utf8) {
                 input.fileHandleForWriting.write(data)
@@ -327,6 +332,7 @@ final class CodexTranslationService {
             let stdoutData = stdout.fileHandleForReading.readDataToEndOfFile()
             let stderrData = stderr.fileHandleForReading.readDataToEndOfFile()
             process.waitUntilExit()
+            try Task.checkCancellation()
 
             let stdoutText = String(data: stdoutData, encoding: .utf8) ?? ""
             let stderrText = String(data: stderrData, encoding: .utf8) ?? ""
@@ -361,7 +367,14 @@ final class CodexTranslationService {
             }
 
             return translated
-        }.value
+        }
+
+        return try await withTaskCancellationHandler {
+            try await task.value
+        } onCancel: {
+            processBox.cancel()
+            task.cancel()
+        }
     }
 
     private func translatePromptWithClaude(
@@ -369,10 +382,14 @@ final class CodexTranslationService {
         effort: ReasoningEffort
     ) async throws -> String {
         let model = ClaudeSettings.model
-        return try await Task.detached(priority: .userInitiated) { [workspaceURL, effort, model, prompt] in
+        let processBox = CancellableProcessBox()
+        let task = Task.detached(priority: .userInitiated) { [workspaceURL, effort, model, prompt, processBox] in
             try FileManager.default.createDirectory(at: workspaceURL, withIntermediateDirectories: true)
 
             let process = Process()
+            processBox.set(process)
+            defer { processBox.clear(process) }
+
             process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
             process.currentDirectoryURL = workspaceURL
             process.arguments = [
@@ -396,6 +413,7 @@ final class CodexTranslationService {
             process.standardOutput = stdout
             process.standardError = stderr
 
+            try Task.checkCancellation()
             try process.run()
             if let data = prompt.data(using: .utf8) {
                 input.fileHandleForWriting.write(data)
@@ -405,6 +423,7 @@ final class CodexTranslationService {
             let stdoutData = stdout.fileHandleForReading.readDataToEndOfFile()
             let stderrData = stderr.fileHandleForReading.readDataToEndOfFile()
             process.waitUntilExit()
+            try Task.checkCancellation()
 
             let stdoutText = String(data: stdoutData, encoding: .utf8) ?? ""
             let stderrText = String(data: stderrData, encoding: .utf8) ?? ""
@@ -436,14 +455,22 @@ final class CodexTranslationService {
             }
 
             return translated
-        }.value
+        }
+
+        return try await withTaskCancellationHandler {
+            try await task.value
+        } onCancel: {
+            processBox.cancel()
+            task.cancel()
+        }
     }
 
     private func translateWithPlamo(
         _ text: String,
         onPartialResult: @escaping TranslationProgressHandler
     ) async throws -> String {
-        try await Task.detached(priority: .userInitiated) { [workspaceURL] in
+        let processBox = CancellableProcessBox()
+        let task = Task.detached(priority: .userInitiated) { [workspaceURL, processBox] in
             guard PlamoSetupService.isSetupComplete else {
                 throw TranslationServiceError.providerNotReady(
                     provider: .plamo,
@@ -454,6 +481,9 @@ final class CodexTranslationService {
             try FileManager.default.createDirectory(at: workspaceURL, withIntermediateDirectories: true)
 
             let process = Process()
+            processBox.set(process)
+            defer { processBox.clear(process) }
+
             process.executableURL = AppPaths.plamoPythonURL
             process.currentDirectoryURL = workspaceURL
             process.arguments = [
@@ -500,9 +530,11 @@ final class CodexTranslationService {
                 outputCollector.appendStderr(data)
             }
 
+            try Task.checkCancellation()
             try process.run()
 
             process.waitUntilExit()
+            try Task.checkCancellation()
             stdout.fileHandleForReading.readabilityHandler = nil
             stderr.fileHandleForReading.readabilityHandler = nil
 
@@ -540,7 +572,14 @@ final class CodexTranslationService {
 
             await onPartialResult(translated)
             return translated
-        }.value
+        }
+
+        return try await withTaskCancellationHandler {
+            try await task.value
+        } onCancel: {
+            processBox.cancel()
+            task.cancel()
+        }
     }
 
     private func translatePromptWithOpenAICompatibleAPI(
@@ -806,6 +845,42 @@ private final class LockedLatestText: @unchecked Sendable {
 
         text = newText
         return true
+    }
+}
+
+private final class CancellableProcessBox: @unchecked Sendable {
+    private let lock = NSLock()
+    private var process: Process?
+    private var isCancelled = false
+
+    func set(_ process: Process) {
+        lock.lock()
+        self.process = process
+        let shouldCancel = isCancelled
+        lock.unlock()
+
+        if shouldCancel, process.isRunning {
+            process.terminate()
+        }
+    }
+
+    func clear(_ process: Process) {
+        lock.lock()
+        if self.process === process {
+            self.process = nil
+        }
+        lock.unlock()
+    }
+
+    func cancel() {
+        lock.lock()
+        isCancelled = true
+        let processToTerminate = process
+        lock.unlock()
+
+        if processToTerminate?.isRunning == true {
+            processToTerminate?.terminate()
+        }
     }
 }
 

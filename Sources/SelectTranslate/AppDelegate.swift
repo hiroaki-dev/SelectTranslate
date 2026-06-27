@@ -13,6 +13,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var shortcutProfilesObserver: NSObjectProtocol?
     private var statusItem: NSStatusItem?
     private var translationTask: Task<Void, Never>?
+    private var translationTaskGeneration = 0
     private var accessibilityRetryTask: Task<Void, Never>?
     private var startupAccessibilityPromptTask: Task<Void, Never>?
     private var currentTranslationRequest: TranslationRequest?
@@ -33,7 +34,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             guard let self else { return }
             self.startSourceRetranslation(
                 effort: self.panelController.reasoningEffort,
-                provider: self.panelController.translationProvider
+                provider: self.panelController.translationProvider,
+                cancelsActiveTask: true
             )
         }
         panelController.onBackTranslateRequested = { [weak self] in
@@ -208,6 +210,27 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         NSApp.terminate(nil)
     }
 
+    private func nextTranslationTaskGeneration() -> Int {
+        translationTaskGeneration += 1
+        return translationTaskGeneration
+    }
+
+    private func clearTranslationTask(generation: Int) {
+        guard translationTaskGeneration == generation else { return }
+
+        translationTask = nil
+    }
+
+    private func cancelActiveTranslationTask() {
+        translationTask?.cancel()
+        translationTaskGeneration += 1
+        translationTask = nil
+    }
+
+    private func isActiveTranslationTask(generation: Int) -> Bool {
+        translationTaskGeneration == generation
+    }
+
     private func startTranslation(
         shortcutProfile: ShortcutProfile,
         cancelPendingAccessibilityRetry: Bool = true,
@@ -230,28 +253,43 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             return
         }
 
+        let taskGeneration = nextTranslationTaskGeneration()
         translationTask = Task { [weak self] in
             guard let self else { return }
-            defer { self.translationTask = nil }
+            defer { self.clearTranslationTask(generation: taskGeneration) }
             await self.translateCurrentSelection(
                 preferredProcessIdentifier: processIdentifier,
                 isAccessibilityRetry: isAccessibilityRetry,
-                shortcutProfile: shortcutProfile
+                shortcutProfile: shortcutProfile,
+                taskGeneration: taskGeneration
             )
         }
     }
 
-    private func startSourceRetranslation(effort: ReasoningEffort, provider: TranslationProvider) {
+    private func startSourceRetranslation(
+        effort: ReasoningEffort,
+        provider: TranslationProvider,
+        cancelsActiveTask: Bool = false
+    ) {
         guard let request = makeTranslationRequest(
             from: panelController.sourceText,
             sourceLanguageSelection: panelController.sourceLanguageSelection
         ) else { return }
-        guard translationTask == nil else { return }
+        if translationTask != nil {
+            guard cancelsActiveTask else { return }
+            cancelActiveTranslationTask()
+        }
 
+        let taskGeneration = nextTranslationTaskGeneration()
         translationTask = Task { [weak self] in
             guard let self else { return }
-            defer { self.translationTask = nil }
-            await self.translatePreparedRequest(request, effort: effort, provider: provider)
+            defer { self.clearTranslationTask(generation: taskGeneration) }
+            await self.translatePreparedRequest(
+                request,
+                effort: effort,
+                provider: provider,
+                taskGeneration: taskGeneration
+            )
         }
     }
 
@@ -281,13 +319,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             return
         }
 
+        let taskGeneration = nextTranslationTaskGeneration()
         translationTask = Task { [weak self] in
             guard let self else { return }
-            defer { self.translationTask = nil }
+            defer { self.clearTranslationTask(generation: taskGeneration) }
             await self.translatePreparedRequest(
                 request,
                 effort: self.panelController.reasoningEffort,
-                provider: self.panelController.translationProvider
+                provider: self.panelController.translationProvider,
+                taskGeneration: taskGeneration
             )
         }
     }
@@ -295,10 +335,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func startProviderChange(_ provider: TranslationProvider) {
         guard translationTask == nil else { return }
 
+        let taskGeneration = nextTranslationTaskGeneration()
         translationTask = Task { [weak self] in
             guard let self else { return }
-            defer { self.translationTask = nil }
-            await self.applyProviderChange(provider)
+            defer { self.clearTranslationTask(generation: taskGeneration) }
+            await self.applyProviderChange(provider, taskGeneration: taskGeneration)
         }
     }
 
@@ -306,9 +347,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         guard let result = currentTranslationResult else { return }
         guard translationTask == nil else { return }
 
+        let taskGeneration = nextTranslationTaskGeneration()
         translationTask = Task { [weak self] in
             guard let self else { return }
-            defer { self.translationTask = nil }
+            defer { self.clearTranslationTask(generation: taskGeneration) }
             await self.backTranslate(
                 result: result,
                 effort: self.panelController.reasoningEffort,
@@ -339,9 +381,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             return
         }
 
+        let taskGeneration = nextTranslationTaskGeneration()
         translationTask = Task { [weak self] in
             guard let self else { return }
-            defer { self.translationTask = nil }
+            defer { self.clearTranslationTask(generation: taskGeneration) }
             await self.translateReply(
                 draft: draft,
                 intendedText: intendedText,
@@ -368,9 +411,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             return
         }
 
+        let taskGeneration = nextTranslationTaskGeneration()
         translationTask = Task { [weak self] in
             guard let self else { return }
-            defer { self.translationTask = nil }
+            defer { self.clearTranslationTask(generation: taskGeneration) }
             await self.backTranslateReply(
                 translatedReply: translatedReply,
                 result: result,
@@ -383,7 +427,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func translateCurrentSelection(
         preferredProcessIdentifier: pid_t?,
         isAccessibilityRetry: Bool,
-        shortcutProfile: ShortcutProfile
+        shortcutProfile: ShortcutProfile,
+        taskGeneration: Int
     ) async {
         do {
             let sourceText = try await selectionReader.readSelectedText(
@@ -399,7 +444,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             await translate(
                 request: request,
                 effort: panelController.reasoningEffort,
-                provider: panelController.translationProvider
+                provider: panelController.translationProvider,
+                taskGeneration: taskGeneration
             )
         } catch SelectionReaderError.accessibilityPermissionRequired {
             currentTranslationRequest = nil
@@ -551,20 +597,28 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func translatePreparedRequest(
         _ request: TranslationRequest,
         effort: ReasoningEffort,
-        provider: TranslationProvider
+        provider: TranslationProvider,
+        taskGeneration: Int
     ) async {
         updateCurrentTranslationRequest(request)
         if showCachedTranslationIfAvailable(request: request, effort: effort, provider: provider) {
             return
         }
 
-        await translate(request: request, effort: effort, provider: provider)
+        await translate(request: request, effort: effort, provider: provider, taskGeneration: taskGeneration)
     }
 
-    private func translate(request: TranslationRequest, effort: ReasoningEffort, provider: TranslationProvider) async {
+    private func translate(
+        request: TranslationRequest,
+        effort: ReasoningEffort,
+        provider: TranslationProvider,
+        taskGeneration: Int
+    ) async {
         do {
             let cacheKey = TranslationCacheKey(request: request, effort: effort, provider: provider)
             let resolvedSourceLanguageSelection = request.resolvedSourceLanguageSelection
+            guard isActiveTranslationTask(generation: taskGeneration) else { return }
+
             currentTranslationResult = nil
             panelController.showLoading(
                 source: request.sourceText,
@@ -580,9 +634,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 provider: provider,
                 promptTemplate: request.shortcutProfile.normalizedPromptTemplate,
                 onPartialResult: { [weak self] partialText in
-                    self?.panelController.showStreamingTranslation(partialText)
+                    guard let self, self.isActiveTranslationTask(generation: taskGeneration) else { return }
+
+                    self.panelController.showStreamingTranslation(partialText)
                 }
             )
+            guard isActiveTranslationTask(generation: taskGeneration) else { return }
+
             translationCache[cacheKey] = translatedText
             currentHistoryItemID = nil
             currentTranslationResult = TranslationResult(
@@ -606,6 +664,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 effort: effort
             )
         } catch {
+            guard isActiveTranslationTask(generation: taskGeneration) else { return }
+
             panelController.showError(
                 source: request.sourceText,
                 title: "Translation Failed",
@@ -830,7 +890,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         return true
     }
 
-    private func applyProviderChange(_ provider: TranslationProvider) async {
+    private func applyProviderChange(_ provider: TranslationProvider, taskGeneration: Int) async {
         if provider == .plamo, !PlamoSetupService.isSetupComplete {
             TranslationPreferences.translationProvider = .codex
             panelController.setTranslationProvider(.codex)
@@ -847,7 +907,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             sourceLanguageSelection: sourceLanguageSelectionForCurrentSource()
         ) else { return }
         let effort = panelController.reasoningEffort
-        await translatePreparedRequest(request, effort: effort, provider: provider)
+        await translatePreparedRequest(
+            request,
+            effort: effort,
+            provider: provider,
+            taskGeneration: taskGeneration
+        )
     }
 }
 

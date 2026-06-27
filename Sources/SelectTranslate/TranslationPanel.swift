@@ -949,7 +949,7 @@ private struct TranslationOverlayView: View {
             .labelsHidden()
             .controlSize(.small)
             .frame(width: 142)
-            .disabled(isBusy || model.translationProvider == .plamo)
+            .disabled(!canChangeSourceLanguage)
             .help(
                 model.translationProvider == .plamo
                     ? "PLaMo uses its own language detection"
@@ -1137,6 +1137,13 @@ private struct TranslationOverlayView: View {
     private var canTranslateSource: Bool {
         !isBusy &&
             !model.sourceText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    private var canChangeSourceLanguage: Bool {
+        model.translationProvider != .plamo &&
+            !model.isBackTranslating &&
+            !model.isReplyTranslating &&
+            !model.isReplyBackTranslating
     }
 
     private var canTranslateReply: Bool {

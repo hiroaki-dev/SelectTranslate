@@ -844,9 +844,7 @@ private struct TranslationOverlayView: View {
                     .font(.system(size: 17, weight: .semibold))
                     .foregroundStyle(.primary)
                 if !model.directionLabel.isEmpty {
-                    Text(model.directionLabel)
-                        .font(.system(size: 12))
-                        .foregroundStyle(.secondary)
+                    directionContextControl
                 }
             }
 
@@ -872,11 +870,21 @@ private struct TranslationOverlayView: View {
     private var headerControls: some View {
         VStack(alignment: .leading, spacing: 8) {
             providerPicker
-            sourceLanguagePicker
 
             if model.translationProvider == .codex || model.translationProvider == .claude {
                 effortPicker
             }
+        }
+    }
+
+    private var directionContextControl: some View {
+        HStack(spacing: 6) {
+            sourceLanguagePicker
+
+            Text(model.directionLabel)
+                .font(.system(size: 12))
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
         }
     }
 
@@ -946,7 +954,8 @@ private struct TranslationOverlayView: View {
             }
             .pickerStyle(.segmented)
             .labelsHidden()
-            .frame(width: 220)
+            .controlSize(.small)
+            .frame(width: 174)
             .disabled(isBusy || model.translationProvider == .plamo)
             .help(
                 model.translationProvider == .plamo

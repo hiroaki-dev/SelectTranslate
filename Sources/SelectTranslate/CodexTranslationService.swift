@@ -80,6 +80,8 @@ enum SourceLanguageSelection: String, CaseIterable, Identifiable {
     case english
     case japanese
 
+    static let selectableCases: [SourceLanguageSelection] = [.english, .japanese]
+
     var id: String { rawValue }
 
     var label: String {

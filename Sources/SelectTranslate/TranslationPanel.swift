@@ -843,7 +843,7 @@ private struct TranslationOverlayView: View {
                 Text(model.title)
                     .font(.system(size: 17, weight: .semibold))
                     .foregroundStyle(.primary)
-                if !model.directionLabel.isEmpty {
+                if model.currentDirection != nil {
                     directionContextControl
                 }
             }
@@ -878,14 +878,7 @@ private struct TranslationOverlayView: View {
     }
 
     private var directionContextControl: some View {
-        HStack(spacing: 6) {
-            sourceLanguagePicker
-
-            Text(model.directionLabel)
-                .font(.system(size: 12))
-                .foregroundStyle(.secondary)
-                .lineLimit(1)
-        }
+        sourceLanguagePicker
     }
 
     private var providerPicker: some View {
@@ -948,19 +941,19 @@ private struct TranslationOverlayView: View {
                     sourceLanguageChanged(selection)
                 }
             )) {
-                ForEach(SourceLanguageSelection.allCases) { selection in
+                ForEach(SourceLanguageSelection.selectableCases) { selection in
                     Text(selection.label).tag(selection)
                 }
             }
             .pickerStyle(.segmented)
             .labelsHidden()
             .controlSize(.small)
-            .frame(width: 174)
+            .frame(width: 142)
             .disabled(isBusy || model.translationProvider == .plamo)
             .help(
                 model.translationProvider == .plamo
                     ? "PLaMo uses its own language detection"
-                    : "Choose the original language manually, or leave it on Auto"
+                    : "Choose the original language manually"
             )
         }
     }

@@ -29,6 +29,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         panelController.onTranslationProviderChanged = { [weak self] provider in
             self?.startProviderChange(provider)
         }
+        panelController.onSourceLanguageSelectionChanged = { [weak self] _ in
+            guard let self else { return }
+            self.startSourceRetranslation(
+                effort: self.panelController.reasoningEffort,
+                provider: self.panelController.translationProvider
+            )
+        }
         panelController.onBackTranslateRequested = { [weak self] in
             self?.startBackTranslation()
         }
@@ -235,7 +242,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func startSourceRetranslation(effort: ReasoningEffort, provider: TranslationProvider) {
-        guard let request = makeTranslationRequest(from: panelController.sourceText) else { return }
+        guard let request = makeTranslationRequest(
+            from: panelController.sourceText,
+            sourceLanguageSelection: panelController.sourceLanguageSelection
+        ) else { return }
         guard translationTask == nil else { return }
 
         translationTask = Task { [weak self] in
@@ -248,7 +258,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func startManualSourceTranslation() {
         cancelAccessibilityRetry()
         let sourceText = panelController.sourceText
-        guard let request = makeTranslationRequest(from: sourceText) else {
+        guard let request = makeTranslationRequest(
+            from: sourceText,
+            sourceLanguageSelection: panelController.sourceLanguageSelection
+        ) else {
             panelController.showError(
                 source: sourceText,
                 title: "No Original Text",
@@ -378,7 +391,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             )
             let request = TranslationRequest(
                 sourceText: sourceText,
-                direction: TranslationDirection.detect(sourceText),
+                sourceLanguageSelection: .automatic,
                 shortcutProfile: shortcutProfile
             )
             updateCurrentTranslationRequest(request)
@@ -492,7 +505,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         return application.processIdentifier
     }
 
-    private func makeTranslationRequest(from sourceText: String) -> TranslationRequest? {
+    private func makeTranslationRequest(
+        from sourceText: String,
+        sourceLanguageSelection: SourceLanguageSelection
+    ) -> TranslationRequest? {
         guard !sourceText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             return nil
         }
@@ -500,7 +516,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let shortcutProfile = activeShortcutProfile()
         return TranslationRequest(
             sourceText: sourceText,
-            direction: TranslationDirection.detect(sourceText),
+            sourceLanguageSelection: sourceLanguageSelection,
             shortcutProfile: shortcutProfile
         )
     }
@@ -514,7 +530,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func updateCurrentTranslationRequest(_ request: TranslationRequest) {
-        if currentTranslationRequest?.sourceText != request.sourceText {
+        if currentTranslationRequest?.sourceText != request.sourceText ||
+            currentTranslationRequest?.direction != request.direction {
             translationCache.removeAll()
             currentTranslationResult = nil
             currentHistoryItemID = nil
@@ -543,6 +560,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             panelController.showLoading(
                 source: request.sourceText,
                 direction: request.direction,
+                sourceLanguageSelection: request.sourceLanguageSelection,
                 provider: provider,
                 shortcutProfile: request.shortcutProfile
             )
@@ -568,6 +586,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 source: request.sourceText,
                 translation: translatedText,
                 direction: request.direction,
+                sourceLanguageSelection: request.sourceLanguageSelection,
                 provider: provider,
                 shortcutProfile: request.shortcutProfile
             )
@@ -610,7 +629,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         cancelAccessibilityRetry()
         let request = TranslationRequest(
             sourceText: item.originalText,
-            direction: TranslationDirection.detect(item.originalText),
+            sourceLanguageSelection: SourceLanguageSelection.sourceLanguage(
+                for: TranslationDirection(label: item.directionLabel) ?? .detect(item.originalText)
+            ),
             shortcutProfile: PromptSettings.defaultShortcutProfile
         )
         currentTranslationRequest = request
@@ -778,6 +799,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             source: request.sourceText,
             translation: translatedText,
             direction: request.direction,
+            sourceLanguageSelection: request.sourceLanguageSelection,
             provider: provider,
             shortcutProfile: request.shortcutProfile
         )
@@ -811,7 +833,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             return
         }
 
-        guard let request = makeTranslationRequest(from: panelController.sourceText) else { return }
+        guard let request = makeTranslationRequest(
+            from: panelController.sourceText,
+            sourceLanguageSelection: panelController.sourceLanguageSelection
+        ) else { return }
         let effort = panelController.reasoningEffort
         await translatePreparedRequest(request, effort: effort, provider: provider)
     }
@@ -819,8 +844,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
 private struct TranslationRequest {
     let sourceText: String
-    let direction: TranslationDirection
+    let sourceLanguageSelection: SourceLanguageSelection
     let shortcutProfile: ShortcutProfile
+
+    var direction: TranslationDirection {
+        sourceLanguageSelection.direction(for: sourceText)
+    }
 }
 
 private struct TranslationResult {

@@ -34,6 +34,7 @@ final class TranslationPanelModel: ObservableObject {
     @Published var selectedHistoryID: Int64?
     @Published var isPlamoReady: Bool
     @Published var currentDirection: TranslationDirection? = nil
+    @Published var sourceLanguageSelection: SourceLanguageSelection = .automatic
     @Published var reasoningEffort: ReasoningEffort {
         didSet {
             UserDefaults.standard.set(reasoningEffort.rawValue, forKey: Self.effortDefaultsKey)
@@ -43,6 +44,9 @@ final class TranslationPanelModel: ObservableObject {
         didSet {
             if oldValue != translationProvider {
                 TranslationPreferences.translationProvider = translationProvider
+            }
+            if translationProvider == .plamo {
+                sourceLanguageSelection = .automatic
             }
         }
     }
@@ -173,7 +177,9 @@ final class TranslationPanelModel: ObservableObject {
         replyBackTranslatedText = ""
         replyBackTranslationMessage = ""
         isReplyCorrectionEnabled = item.replyMode == .correction
-        currentDirection = TranslationDirection.detect(item.originalText)
+        let historyDirection = TranslationDirection(label: item.directionLabel) ?? .detect(item.originalText)
+        currentDirection = historyDirection
+        sourceLanguageSelection = .sourceLanguage(for: historyDirection)
         isLoading = false
         isBackTranslating = false
         isReplyTranslating = false
@@ -196,6 +202,7 @@ final class TranslationPanelModel: ObservableObject {
         backTranslationMessage = ""
         clearReplyState(clearDraft: true)
         currentDirection = nil
+        sourceLanguageSelection = .automatic
         isLoading = false
         isBackTranslating = false
         isReplyTranslating = false
@@ -244,6 +251,7 @@ final class TranslationPanelController {
 
     var onReasoningEffortChanged: ((ReasoningEffort) -> Void)?
     var onTranslationProviderChanged: ((TranslationProvider) -> Void)?
+    var onSourceLanguageSelectionChanged: ((SourceLanguageSelection) -> Void)?
     var onBackTranslateRequested: (() -> Void)?
     var onSourceTranslateRequested: (() -> Void)?
     var onReplyTranslateRequested: (() -> Void)?
@@ -261,6 +269,10 @@ final class TranslationPanelController {
 
     var sourceText: String {
         model.sourceText
+    }
+
+    var sourceLanguageSelection: SourceLanguageSelection {
+        model.sourceLanguageSelection
     }
 
     var replyDraftText: String {
@@ -281,6 +293,10 @@ final class TranslationPanelController {
 
     func setTranslationProvider(_ provider: TranslationProvider) {
         model.translationProvider = provider
+    }
+
+    func setSourceLanguageSelection(_ selection: SourceLanguageSelection) {
+        model.sourceLanguageSelection = selection
     }
 
     func activateOnNextShow() {
@@ -324,12 +340,14 @@ final class TranslationPanelController {
     func showLoading(
         source: String,
         direction: TranslationDirection,
+        sourceLanguageSelection: SourceLanguageSelection,
         provider: TranslationProvider,
         shortcutProfile: ShortcutProfile
     ) {
         model.sourceText = source
         model.translatedText = ""
         model.currentDirection = direction
+        model.sourceLanguageSelection = sourceLanguageSelection
         model.directionLabel = Self.contextLabel(direction: direction, shortcutProfile: shortcutProfile)
         model.title = "Translating"
         model.message = Self.loadingMessage(provider: provider)
@@ -351,12 +369,14 @@ final class TranslationPanelController {
         source: String,
         translation: String,
         direction: TranslationDirection,
+        sourceLanguageSelection: SourceLanguageSelection,
         provider: TranslationProvider,
         shortcutProfile: ShortcutProfile
     ) {
         model.sourceText = source
         model.translatedText = translation
         model.currentDirection = direction
+        model.sourceLanguageSelection = sourceLanguageSelection
         model.directionLabel = Self.contextLabel(direction: direction, shortcutProfile: shortcutProfile)
         model.title = "\(provider.label) Translate"
         model.message = ""
@@ -386,6 +406,7 @@ final class TranslationPanelController {
         model.translatedText = ""
         model.directionLabel = ""
         model.currentDirection = nil
+        model.sourceLanguageSelection = .automatic
         model.title = title
         model.message = message
         model.backTranslatedText = ""
@@ -408,6 +429,7 @@ final class TranslationPanelController {
         model.translatedText = ""
         model.directionLabel = ""
         model.currentDirection = nil
+        model.sourceLanguageSelection = .automatic
         model.title = title
         model.message = message
         model.backTranslatedText = ""
@@ -545,6 +567,7 @@ final class TranslationPanelController {
 
         model.directionLabel = PromptSettings.defaultShortcutProfile.shortcutLabel
         model.currentDirection = nil
+        model.sourceLanguageSelection = .automatic
         model.title = "SelectTranslate is Running"
         model.message = ""
         model.backTranslatedText = ""
@@ -645,6 +668,9 @@ final class TranslationPanelController {
                 providerChanged: { [weak self] provider in
                     self?.onTranslationProviderChanged?(provider)
                 },
+                sourceLanguageChanged: { [weak self] selection in
+                    self?.onSourceLanguageSelectionChanged?(selection)
+                },
                 backTranslate: { [weak self] in
                     self?.onBackTranslateRequested?()
                 },
@@ -677,6 +703,7 @@ private struct TranslationOverlayView: View {
     @ObservedObject var model: TranslationPanelModel
     let effortChanged: (ReasoningEffort) -> Void
     let providerChanged: (TranslationProvider) -> Void
+    let sourceLanguageChanged: (SourceLanguageSelection) -> Void
     let backTranslate: () -> Void
     let translateSource: () -> Void
     let translateReply: () -> Void
@@ -845,6 +872,7 @@ private struct TranslationOverlayView: View {
     private var headerControls: some View {
         VStack(alignment: .leading, spacing: 8) {
             providerPicker
+            sourceLanguagePicker
 
             if model.translationProvider == .codex || model.translationProvider == .claude {
                 effortPicker
@@ -893,6 +921,38 @@ private struct TranslationOverlayView: View {
                     (model.translationProvider != .codex && model.translationProvider != .claude)
             )
             .help("Reasoning effort passed to the selected CLI engine")
+        }
+    }
+
+    private var sourceLanguagePicker: some View {
+        HStack(spacing: 6) {
+            Text("Source")
+                .font(.system(size: 12, weight: .medium))
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+                .fixedSize(horizontal: true, vertical: false)
+
+            Picker("", selection: Binding(
+                get: { model.sourceLanguageSelection },
+                set: { selection in
+                    guard model.sourceLanguageSelection != selection else { return }
+                    model.sourceLanguageSelection = selection
+                    sourceLanguageChanged(selection)
+                }
+            )) {
+                ForEach(SourceLanguageSelection.allCases) { selection in
+                    Text(selection.label).tag(selection)
+                }
+            }
+            .pickerStyle(.segmented)
+            .labelsHidden()
+            .frame(width: 220)
+            .disabled(isBusy || model.translationProvider == .plamo)
+            .help(
+                model.translationProvider == .plamo
+                    ? "PLaMo uses its own language detection"
+                    : "Choose the original language manually, or leave it on Auto"
+            )
         }
     }
 

@@ -4,6 +4,18 @@ enum TranslationDirection: Hashable {
     case englishToJapanese
     case japaneseToEnglish
 
+    init?(label: String) {
+        let trimmedLabel = label.trimmingCharacters(in: .whitespacesAndNewlines)
+        switch trimmedLabel {
+        case Self.englishToJapanese.label:
+            self = .englishToJapanese
+        case Self.japaneseToEnglish.label:
+            self = .japaneseToEnglish
+        default:
+            return nil
+        }
+    }
+
     static func detect(_ text: String) -> TranslationDirection {
         let containsJapanese = text.unicodeScalars.contains { scalar in
             switch scalar.value {
@@ -59,6 +71,45 @@ enum TranslationDirection: Hashable {
             return "English"
         case .japaneseToEnglish:
             return "Japanese"
+        }
+    }
+}
+
+enum SourceLanguageSelection: String, CaseIterable, Identifiable {
+    case automatic
+    case english
+    case japanese
+
+    var id: String { rawValue }
+
+    var label: String {
+        switch self {
+        case .automatic:
+            return "Auto"
+        case .english:
+            return "English"
+        case .japanese:
+            return "Japanese"
+        }
+    }
+
+    func direction(for text: String) -> TranslationDirection {
+        switch self {
+        case .automatic:
+            return .detect(text)
+        case .english:
+            return .englishToJapanese
+        case .japanese:
+            return .japaneseToEnglish
+        }
+    }
+
+    static func sourceLanguage(for direction: TranslationDirection) -> SourceLanguageSelection {
+        switch direction {
+        case .englishToJapanese:
+            return .english
+        case .japaneseToEnglish:
+            return .japanese
         }
     }
 }

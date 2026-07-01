@@ -32,6 +32,11 @@ final class TranslationPanelModel: ObservableObject {
     @Published var canBackTranslate: Bool = false
     @Published var historyItems: [TranslationHistoryItem] = []
     @Published var selectedHistoryID: Int64?
+    @Published var learningTerms: [LearningTerm] = []
+    @Published var selectedOriginalLearningText: String = ""
+    @Published var selectedTranslatedReplyLearningText: String = ""
+    @Published var learningTermMessage: String = ""
+    @Published var isSavingLearningTerm: Bool = false
     @Published var isPlamoReady: Bool
     @Published var currentDirection: TranslationDirection? = nil
     @Published var sourceLanguageSelection: SourceLanguageSelection = .automatic
@@ -91,6 +96,9 @@ final class TranslationPanelModel: ObservableObject {
             return
         }
 
+        selectedOriginalLearningText = ""
+        selectedTranslatedReplyLearningText = ""
+        learningTermMessage = ""
         translatedText = ""
         message = ""
         directionLabel = ""
@@ -144,6 +152,20 @@ final class TranslationPanelModel: ObservableObject {
         }
     }
 
+    func setLearningTerms(_ terms: [LearningTerm]) {
+        learningTerms = terms
+    }
+
+    func upsertLearningTerm(_ term: LearningTerm) {
+        var terms = learningTerms.filter { $0.id != term.id }
+        terms.removeAll {
+            LearningTermStore.normalizedText($0.text) == LearningTermStore.normalizedText(term.text) &&
+                $0.sourceKind == term.sourceKind
+        }
+        terms.insert(term, at: 0)
+        learningTerms = terms
+    }
+
     func prependHistoryItem(_ item: TranslationHistoryItem, limit: Int = 200) {
         var items = historyItems.filter { $0.id != item.id }
         items.insert(item, at: 0)
@@ -176,6 +198,10 @@ final class TranslationPanelModel: ObservableObject {
         replyTranslationMessage = ""
         replyBackTranslatedText = ""
         replyBackTranslationMessage = ""
+        selectedOriginalLearningText = ""
+        selectedTranslatedReplyLearningText = ""
+        learningTermMessage = ""
+        isSavingLearningTerm = false
         isReplyCorrectionEnabled = item.replyMode == .correction
         let historyDirection = TranslationDirection(label: item.directionLabel) ?? .detect(item.originalText)
         currentDirection = historyDirection
@@ -200,6 +226,10 @@ final class TranslationPanelModel: ObservableObject {
         message = "Type or paste text in Original, then press the translate button."
         backTranslatedText = ""
         backTranslationMessage = ""
+        selectedOriginalLearningText = ""
+        selectedTranslatedReplyLearningText = ""
+        learningTermMessage = ""
+        isSavingLearningTerm = false
         clearReplyState(clearDraft: true)
         currentDirection = nil
         sourceLanguageSelection = .automatic
@@ -258,6 +288,7 @@ final class TranslationPanelController {
     var onReplyBackTranslateRequested: (() -> Void)?
     var onHistoryItemSelected: ((TranslationHistoryItem) -> Void)?
     var onNewTranslationRequested: (() -> Void)?
+    var onLearningTermSaveRequested: ((LearningTermSourceKind, String) -> Void)?
 
     var reasoningEffort: ReasoningEffort {
         model.reasoningEffort
@@ -287,6 +318,10 @@ final class TranslationPanelController {
         model.translatedReplyText
     }
 
+    var learningTerms: [LearningTerm] {
+        model.learningTerms
+    }
+
     var isReplyCorrectionEnabled: Bool {
         model.isReplyCorrectionEnabled
     }
@@ -309,6 +344,29 @@ final class TranslationPanelController {
 
     func setHistoryItems(_ items: [TranslationHistoryItem]) {
         model.setHistoryItems(items)
+    }
+
+    func setLearningTerms(_ terms: [LearningTerm]) {
+        model.setLearningTerms(terms)
+    }
+
+    func showLearningTermSaving(sourceKind: LearningTermSourceKind) {
+        model.isSavingLearningTerm = true
+        model.learningTermMessage = "Saving \(sourceKind.label) selection."
+        showPanel()
+    }
+
+    func showLearningTermSaved(_ term: LearningTerm) {
+        model.upsertLearningTerm(term)
+        model.isSavingLearningTerm = false
+        model.learningTermMessage = "Saved \"\(term.text)\"."
+        showPanel()
+    }
+
+    func showLearningTermError(_ message: String) {
+        model.isSavingLearningTerm = false
+        model.learningTermMessage = message
+        showPanel()
     }
 
     func prependHistoryItem(_ item: TranslationHistoryItem) {
@@ -353,6 +411,9 @@ final class TranslationPanelController {
         model.message = Self.loadingMessage(provider: provider)
         model.backTranslatedText = ""
         model.backTranslationMessage = ""
+        model.selectedOriginalLearningText = ""
+        model.selectedTranslatedReplyLearningText = ""
+        model.learningTermMessage = ""
         model.clearReplyState(clearDraft: false)
         model.isLoading = true
         model.isBackTranslating = false
@@ -382,6 +443,9 @@ final class TranslationPanelController {
         model.message = ""
         model.backTranslatedText = ""
         model.backTranslationMessage = ""
+        model.selectedOriginalLearningText = ""
+        model.selectedTranslatedReplyLearningText = ""
+        model.learningTermMessage = ""
         model.clearReplyState(clearDraft: false)
         model.isLoading = false
         model.isBackTranslating = false
@@ -411,6 +475,10 @@ final class TranslationPanelController {
         model.message = message
         model.backTranslatedText = ""
         model.backTranslationMessage = ""
+        model.selectedOriginalLearningText = ""
+        model.selectedTranslatedReplyLearningText = ""
+        model.learningTermMessage = ""
+        model.isSavingLearningTerm = false
         model.clearReplyState(clearDraft: true)
         model.isLoading = false
         model.isBackTranslating = false
@@ -434,6 +502,10 @@ final class TranslationPanelController {
         model.message = message
         model.backTranslatedText = ""
         model.backTranslationMessage = ""
+        model.selectedOriginalLearningText = ""
+        model.selectedTranslatedReplyLearningText = ""
+        model.learningTermMessage = ""
+        model.isSavingLearningTerm = false
         model.clearReplyState(clearDraft: true)
         model.isLoading = true
         model.isBackTranslating = false
@@ -572,6 +644,10 @@ final class TranslationPanelController {
         model.message = ""
         model.backTranslatedText = ""
         model.backTranslationMessage = ""
+        model.selectedOriginalLearningText = ""
+        model.selectedTranslatedReplyLearningText = ""
+        model.learningTermMessage = ""
+        model.isSavingLearningTerm = false
         model.clearReplyState(clearDraft: true)
         model.isLoading = false
         model.isBackTranslating = false
@@ -689,6 +765,9 @@ final class TranslationPanelController {
                 newTranslation: { [weak self] in
                     self?.onNewTranslationRequested?()
                 },
+                saveLearningTerm: { [weak self] sourceKind, selectedText in
+                    self?.onLearningTermSaveRequested?(sourceKind, selectedText)
+                },
                 close: { [weak panel] in
                     panel?.close()
                 }
@@ -710,6 +789,7 @@ private struct TranslationOverlayView: View {
     let backTranslateReply: () -> Void
     let selectHistoryItem: (TranslationHistoryItem) -> Void
     let newTranslation: () -> Void
+    let saveLearningTerm: (LearningTermSourceKind, String) -> Void
     let close: () -> Void
 
     var body: some View {
@@ -786,6 +866,10 @@ private struct TranslationOverlayView: View {
         VStack(alignment: .leading, spacing: 16) {
             header
 
+            if !model.learningTermMessage.isEmpty {
+                learningTermStatus
+            }
+
             if model.isError {
                 errorBody
             } else {
@@ -794,6 +878,34 @@ private struct TranslationOverlayView: View {
         }
         .padding(20)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    private var learningTermStatus: some View {
+        HStack(spacing: 8) {
+            if model.isSavingLearningTerm {
+                ProgressView()
+                    .controlSize(.small)
+            } else {
+                Image(systemName: "bookmark")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(.secondary)
+            }
+            Text(model.learningTermMessage)
+                .font(.system(size: 12, weight: .medium))
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+            Spacer()
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 6)
+        .background(
+            RoundedRectangle(cornerRadius: 8)
+                .fill(Color(nsColor: .controlBackgroundColor).opacity(0.6))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 8)
+                .stroke(Color(nsColor: .separatorColor), lineWidth: 1)
+        )
     }
 
     private func historyRow(_ item: TranslationHistoryItem) -> some View {
@@ -994,6 +1106,11 @@ private struct TranslationOverlayView: View {
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
                 Spacer()
+                learningTermButton(
+                    sourceKind: .original,
+                    selectedText: model.selectedOriginalLearningText,
+                    isDisabled: !canSaveOriginalLearningTerm
+                )
             }
             .frame(height: 28)
 
@@ -1072,7 +1189,8 @@ private struct TranslationOverlayView: View {
                 scrollText(
                     text: model.translatedText,
                     placeholder: model.message,
-                    isError: false
+                    isError: false,
+                    learningTerms: model.learningTerms
                 )
                 .frame(maxHeight: .infinity)
 
@@ -1161,6 +1279,19 @@ private struct TranslationOverlayView: View {
             model.translationProvider != .plamo &&
             !model.isReplyCorrectionEnabled &&
             !model.translatedReplyText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    private var canSaveOriginalLearningTerm: Bool {
+        model.canBackTranslate &&
+            !model.isSavingLearningTerm &&
+            !model.selectedOriginalLearningText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    private var canSaveTranslatedReplyLearningTerm: Bool {
+        model.canBackTranslate &&
+            !model.isSavingLearningTerm &&
+            !model.isReplyCorrectionEnabled &&
+            !model.selectedTranslatedReplyLearningText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
     private var isReplyCorrectionAvailable: Bool {
@@ -1318,6 +1449,12 @@ private struct TranslationOverlayView: View {
                     .lineLimit(1)
                 Spacer()
                 if !model.translatedReplyText.isEmpty, !model.isReplyCorrectionEnabled {
+                    learningTermButton(
+                        sourceKind: .translatedReply,
+                        selectedText: model.selectedTranslatedReplyLearningText,
+                        isDisabled: !canSaveTranslatedReplyLearningTerm
+                    )
+
                     Button(action: backTranslateReply) {
                         Image(systemName: "arrow.triangle.2.circlepath")
                             .frame(width: 22, height: 22)
@@ -1344,7 +1481,11 @@ private struct TranslationOverlayView: View {
                 scrollText(
                     text: model.translatedReplyText,
                     placeholder: replyTranslationPlaceholder,
-                    isError: model.isReplyTranslationError
+                    isError: model.isReplyTranslationError,
+                    learningTerms: model.learningTerms,
+                    onSelectionChange: { selectedText in
+                        model.selectedTranslatedReplyLearningText = selectedText
+                    }
                 )
                 .frame(maxHeight: .infinity)
 
@@ -1408,6 +1549,9 @@ private struct TranslationOverlayView: View {
             ),
             placeholder: placeholder,
             isDisabled: isBusy,
+            onSelectionChange: { selectedText in
+                model.selectedOriginalLearningText = selectedText
+            },
             onSubmit: translateSource
         )
         .background(
@@ -1442,14 +1586,276 @@ private struct TranslationOverlayView: View {
         )
     }
 
-    private func scrollText(text: String, placeholder: String, isError: Bool) -> some View {
-        ScrollView {
-            Text(text.isEmpty ? placeholder : text)
-                .font(.system(size: 15))
-                .foregroundStyle(text.isEmpty ? (isError ? .red : .secondary) : .primary)
-                .textSelection(.enabled)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(12)
+    private func scrollText(
+        text: String,
+        placeholder: String,
+        isError: Bool,
+        learningTerms: [LearningTerm] = [],
+        onSelectionChange: @escaping (String) -> Void = { _ in }
+    ) -> some View {
+        SelectableTextView(
+            text: text,
+            placeholder: placeholder,
+            isError: isError,
+            learningTerms: learningTerms,
+            onSelectionChange: onSelectionChange
+        )
+    }
+
+    private func learningTermButton(
+        sourceKind: LearningTermSourceKind,
+        selectedText: String,
+        isDisabled: Bool
+    ) -> some View {
+        Button {
+            saveLearningTerm(sourceKind, selectedText)
+        } label: {
+            HStack(spacing: 4) {
+                Image(systemName: model.isSavingLearningTerm ? "hourglass" : "plus.circle")
+                    .font(.system(size: 11, weight: .semibold))
+                Text("Save")
+                    .font(.system(size: 11, weight: .semibold))
+            }
+            .padding(.horizontal, 6)
+            .frame(height: 22)
+        }
+        .buttonStyle(.borderless)
+        .controlSize(.small)
+        .disabled(isDisabled)
+        .opacity(isDisabled ? 0.45 : 1)
+        .help("Save selected \(sourceKind.label) text for learning")
+    }
+}
+
+private struct SelectableTextView: NSViewRepresentable {
+    let text: String
+    let placeholder: String
+    let isError: Bool
+    var learningTerms: [LearningTerm] = []
+    var onSelectionChange: (String) -> Void = { _ in }
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(self)
+    }
+
+    func makeNSView(context: Context) -> NSScrollView {
+        let scrollView = NSScrollView()
+        scrollView.drawsBackground = false
+        scrollView.borderType = .noBorder
+        scrollView.hasVerticalScroller = true
+        scrollView.hasHorizontalScroller = false
+        scrollView.autohidesScrollers = true
+
+        let textView = LearningTextView()
+        textView.delegate = context.coordinator
+        textView.isEditable = false
+        textView.isSelectable = true
+        textView.isRichText = false
+        textView.importsGraphics = false
+        textView.isVerticallyResizable = true
+        textView.isHorizontallyResizable = false
+        textView.autoresizingMask = [.width]
+        textView.backgroundColor = .clear
+        textView.drawsBackground = false
+        textView.font = NSFont.systemFont(ofSize: 15)
+        textView.textContainerInset = NSSize(width: 12, height: 12)
+        textView.textContainer?.lineFragmentPadding = 0
+        textView.textContainer?.widthTracksTextView = true
+
+        scrollView.documentView = textView
+        context.coordinator.textView = textView
+        context.coordinator.apply(to: textView)
+        return scrollView
+    }
+
+    func updateNSView(_ scrollView: NSScrollView, context: Context) {
+        context.coordinator.parent = self
+        guard let textView = scrollView.documentView as? LearningTextView else { return }
+
+        context.coordinator.apply(to: textView)
+    }
+
+    final class Coordinator: NSObject, NSTextViewDelegate {
+        var parent: SelectableTextView
+        weak var textView: LearningTextView?
+        private var renderedSignature = ""
+
+        init(_ parent: SelectableTextView) {
+            self.parent = parent
+        }
+
+        func apply(to textView: LearningTextView) {
+            let displayText = parent.text.isEmpty ? parent.placeholder : parent.text
+            let signature = [
+                displayText,
+                parent.text.isEmpty.description,
+                parent.isError.description,
+                parent.learningTerms.map { "\($0.id):\($0.text):\($0.translation)" }.joined(separator: "\u{1f}")
+            ].joined(separator: "\u{1e}")
+
+            if renderedSignature != signature {
+                textView.textStorage?.setAttributedString(renderedText(displayText))
+                textView.learningHighlightMatches = parent.text.isEmpty
+                    ? []
+                    : Self.highlightMatches(in: displayText, terms: parent.learningTerms)
+                renderedSignature = signature
+            }
+            textView.font = NSFont.systemFont(ofSize: 15)
+            textView.isSelectable = !displayText.isEmpty
+            textView.needsDisplay = true
+        }
+
+        private func renderedText(_ displayText: String) -> NSAttributedString {
+            let baseColor: NSColor = parent.text.isEmpty
+                ? (parent.isError ? .systemRed : .secondaryLabelColor)
+                : .labelColor
+            let attributedText = NSMutableAttributedString(
+                string: displayText,
+                attributes: [
+                    .font: NSFont.systemFont(ofSize: 15),
+                    .foregroundColor: baseColor
+                ]
+            )
+
+            guard !parent.text.isEmpty else {
+                return attributedText
+            }
+
+            for match in Self.highlightMatches(in: displayText, terms: parent.learningTerms) {
+                attributedText.addAttributes(
+                    [
+                        .backgroundColor: NSColor.controlAccentColor.withAlphaComponent(0.18),
+                        .underlineStyle: NSUnderlineStyle.single.rawValue,
+                        .underlineColor: NSColor.controlAccentColor.withAlphaComponent(0.8)
+                    ],
+                    range: match.range
+                )
+            }
+
+            return attributedText
+        }
+
+        private static func highlightMatches(in text: String, terms: [LearningTerm]) -> [LearningTextView.HighlightMatch] {
+            let nsText = text as NSString
+            let textLength = nsText.length
+            guard textLength > 0 else { return [] }
+
+            var occupied = Array(repeating: false, count: textLength)
+            var matches: [LearningTextView.HighlightMatch] = []
+            let sortedTerms = terms
+                .filter { !$0.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+                .sorted {
+                    ($0.text as NSString).length > ($1.text as NSString).length
+                }
+
+            for term in sortedTerms {
+                let termText = term.text.trimmingCharacters(in: .whitespacesAndNewlines)
+                var searchRange = NSRange(location: 0, length: textLength)
+
+                while searchRange.location < textLength {
+                    let foundRange = nsText.range(
+                        of: termText,
+                        options: [.caseInsensitive, .diacriticInsensitive],
+                        range: searchRange
+                    )
+                    guard foundRange.location != NSNotFound else { break }
+
+                    let end = foundRange.location + foundRange.length
+                    if foundRange.length > 0,
+                       end <= occupied.count,
+                       !occupied[foundRange.location..<end].contains(true) {
+                        for index in foundRange.location..<end {
+                            occupied[index] = true
+                        }
+                        matches.append(.init(range: foundRange, term: term))
+                    }
+
+                    let nextLocation = max(foundRange.location + foundRange.length, foundRange.location + 1)
+                    guard nextLocation < textLength else { break }
+                    searchRange = NSRange(location: nextLocation, length: textLength - nextLocation)
+                }
+            }
+
+            return matches
+        }
+
+        func textViewDidChangeSelection(_ notification: Notification) {
+            guard !parent.text.isEmpty,
+                  let textView = notification.object as? NSTextView,
+                  let selectedRange = textView.selectedRanges.first?.rangeValue,
+                  selectedRange.length > 0,
+                  let range = Range(selectedRange, in: textView.string) else {
+                parent.onSelectionChange("")
+                return
+            }
+
+            parent.onSelectionChange(
+                String(textView.string[range]).trimmingCharacters(in: .whitespacesAndNewlines)
+            )
+        }
+    }
+
+    final class LearningTextView: NSTextView {
+        struct HighlightMatch {
+            let range: NSRange
+            let term: LearningTerm
+        }
+
+        var learningHighlightMatches: [HighlightMatch] = []
+        private var learningTrackingArea: NSTrackingArea?
+
+        override func updateTrackingAreas() {
+            if let learningTrackingArea {
+                removeTrackingArea(learningTrackingArea)
+            }
+
+            let trackingArea = NSTrackingArea(
+                rect: bounds,
+                options: [.activeInKeyWindow, .mouseMoved, .inVisibleRect],
+                owner: self,
+                userInfo: nil
+            )
+            addTrackingArea(trackingArea)
+            learningTrackingArea = trackingArea
+            super.updateTrackingAreas()
+        }
+
+        override func mouseMoved(with event: NSEvent) {
+            super.mouseMoved(with: event)
+
+            let point = convert(event.locationInWindow, from: nil)
+            guard let characterIndex = characterIndex(at: point) else {
+                toolTip = nil
+                return
+            }
+
+            guard let match = learningHighlightMatches.first(where: { NSLocationInRange(characterIndex, $0.range) }) else {
+                toolTip = nil
+                return
+            }
+
+            toolTip = "\(match.term.text): \(match.term.translation)"
+        }
+
+        private func characterIndex(at point: NSPoint) -> Int? {
+            guard let layoutManager, let textContainer else {
+                return nil
+            }
+
+            var containerPoint = point
+            containerPoint.x -= textContainerOrigin.x
+            containerPoint.y -= textContainerOrigin.y
+
+            let glyphIndex = layoutManager.glyphIndex(
+                for: containerPoint,
+                in: textContainer,
+                fractionOfDistanceThroughGlyph: nil
+            )
+            guard glyphIndex < layoutManager.numberOfGlyphs else {
+                return nil
+            }
+
+            return layoutManager.characterIndexForGlyph(at: glyphIndex)
         }
     }
 }
@@ -1458,6 +1864,7 @@ private struct CommandReturnTextEditor: NSViewRepresentable {
     @Binding var text: String
     let placeholder: String
     let isDisabled: Bool
+    var onSelectionChange: (String) -> Void = { _ in }
     let onSubmit: () -> Void
 
     func makeCoordinator() -> Coordinator {
@@ -1493,6 +1900,9 @@ private struct CommandReturnTextEditor: NSViewRepresentable {
         textView.onCommandReturn = {
             context.coordinator.translate()
         }
+        textView.onSelectionChange = { selectedText in
+            context.coordinator.updateSelection(selectedText)
+        }
         scrollView.documentView = textView
         context.coordinator.textView = textView
         return scrollView
@@ -1512,6 +1922,9 @@ private struct CommandReturnTextEditor: NSViewRepresentable {
         textView.onCommandReturn = {
             context.coordinator.translate()
         }
+        textView.onSelectionChange = { selectedText in
+            context.coordinator.updateSelection(selectedText)
+        }
         textView.needsDisplay = true
     }
 
@@ -1529,6 +1942,10 @@ private struct CommandReturnTextEditor: NSViewRepresentable {
             textView.needsDisplay = true
         }
 
+        func updateSelection(_ selectedText: String) {
+            parent.onSelectionChange(selectedText)
+        }
+
         func translate() {
             let sourceText = textView?.string ?? parent.text
             guard !parent.isDisabled,
@@ -1543,6 +1960,7 @@ private struct CommandReturnTextEditor: NSViewRepresentable {
 
     final class CommandReturnTextView: NSTextView {
         var onCommandReturn: (() -> Void)?
+        var onSelectionChange: ((String) -> Void)?
         var placeholder: String = "" {
             didSet {
                 needsDisplay = true
@@ -1580,6 +1998,27 @@ private struct CommandReturnTextEditor: NSViewRepresentable {
             }
 
             super.keyDown(with: event)
+        }
+
+        override func setSelectedRange(_ charRange: NSRange) {
+            super.setSelectedRange(charRange)
+            publishSelection()
+        }
+
+        override func setSelectedRanges(_ ranges: [NSValue], affinity: NSSelectionAffinity, stillSelecting stillSelectingFlag: Bool) {
+            super.setSelectedRanges(ranges, affinity: affinity, stillSelecting: stillSelectingFlag)
+            publishSelection()
+        }
+
+        private func publishSelection() {
+            guard let selectedRange = selectedRanges.first?.rangeValue,
+                  selectedRange.length > 0,
+                  let range = Range(selectedRange, in: string) else {
+                onSelectionChange?("")
+                return
+            }
+
+            onSelectionChange?(String(string[range]).trimmingCharacters(in: .whitespacesAndNewlines))
         }
     }
 }

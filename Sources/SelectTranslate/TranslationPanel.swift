@@ -1189,7 +1189,8 @@ private struct TranslationOverlayView: View {
                 scrollText(
                     text: model.translatedText,
                     placeholder: model.message,
-                    isError: false
+                    isError: false,
+                    learningTerms: model.learningTerms
                 )
                 .frame(maxHeight: .infinity)
 
@@ -1281,13 +1282,13 @@ private struct TranslationOverlayView: View {
     }
 
     private var canSaveOriginalLearningTerm: Bool {
-        model.currentDirection != nil &&
+        model.canBackTranslate &&
             !model.isSavingLearningTerm &&
             !model.selectedOriginalLearningText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
     private var canSaveTranslatedReplyLearningTerm: Bool {
-        model.currentDirection != nil &&
+        model.canBackTranslate &&
             !model.isSavingLearningTerm &&
             !model.isReplyCorrectionEnabled &&
             !model.selectedTranslatedReplyLearningText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
@@ -1481,6 +1482,7 @@ private struct TranslationOverlayView: View {
                     text: model.translatedReplyText,
                     placeholder: replyTranslationPlaceholder,
                     isError: model.isReplyTranslationError,
+                    learningTerms: model.learningTerms,
                     onSelectionChange: { selectedText in
                         model.selectedTranslatedReplyLearningText = selectedText
                     }
@@ -1588,12 +1590,14 @@ private struct TranslationOverlayView: View {
         text: String,
         placeholder: String,
         isError: Bool,
+        learningTerms: [LearningTerm] = [],
         onSelectionChange: @escaping (String) -> Void = { _ in }
     ) -> some View {
         SelectableTextView(
             text: text,
             placeholder: placeholder,
             isError: isError,
+            learningTerms: learningTerms,
             onSelectionChange: onSelectionChange
         )
     }
@@ -1619,6 +1623,7 @@ private struct SelectableTextView: NSViewRepresentable {
     let text: String
     let placeholder: String
     let isError: Bool
+    var learningTerms: [LearningTerm] = []
     var onSelectionChange: (String) -> Void = { _ in }
 
     func makeCoordinator() -> Coordinator {
@@ -1633,7 +1638,7 @@ private struct SelectableTextView: NSViewRepresentable {
         scrollView.hasHorizontalScroller = false
         scrollView.autohidesScrollers = true
 
-        let textView = NSTextView()
+        let textView = LearningTextView()
         textView.delegate = context.coordinator
         textView.isEditable = false
         textView.isSelectable = true
@@ -1657,30 +1662,113 @@ private struct SelectableTextView: NSViewRepresentable {
 
     func updateNSView(_ scrollView: NSScrollView, context: Context) {
         context.coordinator.parent = self
-        guard let textView = scrollView.documentView as? NSTextView else { return }
+        guard let textView = scrollView.documentView as? LearningTextView else { return }
 
         context.coordinator.apply(to: textView)
     }
 
     final class Coordinator: NSObject, NSTextViewDelegate {
         var parent: SelectableTextView
-        weak var textView: NSTextView?
+        weak var textView: LearningTextView?
+        private var renderedSignature = ""
 
         init(_ parent: SelectableTextView) {
             self.parent = parent
         }
 
-        func apply(to textView: NSTextView) {
+        func apply(to textView: LearningTextView) {
             let displayText = parent.text.isEmpty ? parent.placeholder : parent.text
-            if textView.string != displayText {
-                textView.string = displayText
+            let signature = [
+                displayText,
+                parent.text.isEmpty.description,
+                parent.isError.description,
+                parent.learningTerms.map { "\($0.id):\($0.text):\($0.translation)" }.joined(separator: "\u{1f}")
+            ].joined(separator: "\u{1e}")
+
+            if renderedSignature != signature {
+                textView.textStorage?.setAttributedString(renderedText(displayText))
+                textView.learningHighlightMatches = parent.text.isEmpty
+                    ? []
+                    : Self.highlightMatches(in: displayText, terms: parent.learningTerms)
+                renderedSignature = signature
             }
             textView.font = NSFont.systemFont(ofSize: 15)
-            textView.textColor = parent.text.isEmpty
-                ? (parent.isError ? .systemRed : .secondaryLabelColor)
-                : .labelColor
             textView.isSelectable = !displayText.isEmpty
             textView.needsDisplay = true
+        }
+
+        private func renderedText(_ displayText: String) -> NSAttributedString {
+            let baseColor: NSColor = parent.text.isEmpty
+                ? (parent.isError ? .systemRed : .secondaryLabelColor)
+                : .labelColor
+            let attributedText = NSMutableAttributedString(
+                string: displayText,
+                attributes: [
+                    .font: NSFont.systemFont(ofSize: 15),
+                    .foregroundColor: baseColor
+                ]
+            )
+
+            guard !parent.text.isEmpty else {
+                return attributedText
+            }
+
+            for match in Self.highlightMatches(in: displayText, terms: parent.learningTerms) {
+                attributedText.addAttributes(
+                    [
+                        .backgroundColor: NSColor.controlAccentColor.withAlphaComponent(0.18),
+                        .underlineStyle: NSUnderlineStyle.single.rawValue,
+                        .underlineColor: NSColor.controlAccentColor.withAlphaComponent(0.8)
+                    ],
+                    range: match.range
+                )
+            }
+
+            return attributedText
+        }
+
+        private static func highlightMatches(in text: String, terms: [LearningTerm]) -> [LearningTextView.HighlightMatch] {
+            let nsText = text as NSString
+            let textLength = nsText.length
+            guard textLength > 0 else { return [] }
+
+            var occupied = Array(repeating: false, count: textLength)
+            var matches: [LearningTextView.HighlightMatch] = []
+            let sortedTerms = terms
+                .filter { !$0.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+                .sorted {
+                    ($0.text as NSString).length > ($1.text as NSString).length
+                }
+
+            for term in sortedTerms {
+                let termText = term.text.trimmingCharacters(in: .whitespacesAndNewlines)
+                var searchRange = NSRange(location: 0, length: textLength)
+
+                while searchRange.location < textLength {
+                    let foundRange = nsText.range(
+                        of: termText,
+                        options: [.caseInsensitive, .diacriticInsensitive],
+                        range: searchRange
+                    )
+                    guard foundRange.location != NSNotFound else { break }
+
+                    let end = foundRange.location + foundRange.length
+                    if foundRange.length > 0,
+                       end <= occupied.count,
+                       !occupied[foundRange.location..<end].contains(true) {
+                        for index in foundRange.location..<end {
+                            occupied[index] = true
+                        }
+                        matches.append(.init(range: foundRange, term: term))
+                    }
+
+                    let nextLocation = max(foundRange.location + foundRange.length, foundRange.location + 1)
+                    guard nextLocation < textLength else { break }
+                    searchRange = NSRange(location: nextLocation, length: textLength - nextLocation)
+                }
+            }
+
+            return matches
         }
 
         func textViewDidChangeSelection(_ notification: Notification) {
@@ -1696,6 +1784,70 @@ private struct SelectableTextView: NSViewRepresentable {
             parent.onSelectionChange(
                 String(textView.string[range]).trimmingCharacters(in: .whitespacesAndNewlines)
             )
+        }
+    }
+
+    final class LearningTextView: NSTextView {
+        struct HighlightMatch {
+            let range: NSRange
+            let term: LearningTerm
+        }
+
+        var learningHighlightMatches: [HighlightMatch] = []
+        private var learningTrackingArea: NSTrackingArea?
+
+        override func updateTrackingAreas() {
+            if let learningTrackingArea {
+                removeTrackingArea(learningTrackingArea)
+            }
+
+            let trackingArea = NSTrackingArea(
+                rect: bounds,
+                options: [.activeInKeyWindow, .mouseMoved, .inVisibleRect],
+                owner: self,
+                userInfo: nil
+            )
+            addTrackingArea(trackingArea)
+            learningTrackingArea = trackingArea
+            super.updateTrackingAreas()
+        }
+
+        override func mouseMoved(with event: NSEvent) {
+            super.mouseMoved(with: event)
+
+            let point = convert(event.locationInWindow, from: nil)
+            guard let characterIndex = characterIndex(at: point) else {
+                toolTip = nil
+                return
+            }
+
+            guard let match = learningHighlightMatches.first(where: { NSLocationInRange(characterIndex, $0.range) }) else {
+                toolTip = nil
+                return
+            }
+
+            toolTip = "\(match.term.text): \(match.term.translation)"
+        }
+
+        private func characterIndex(at point: NSPoint) -> Int? {
+            guard let layoutManager, let textContainer else {
+                return nil
+            }
+
+            var containerPoint = point
+            containerPoint.x -= textContainerOrigin.x
+            containerPoint.y -= textContainerOrigin.y
+
+            let glyphIndex = layoutManager.glyphIndex(
+                for: containerPoint,
+                in: textContainer,
+                fractionOfDistanceThroughGlyph: nil
+            )
+            guard glyphIndex < layoutManager.numberOfGlyphs else {
+                return nil
+            }
+
+            return layoutManager.characterIndexForGlyph(at: glyphIndex)
         }
     }
 }

@@ -6,6 +6,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let selectionReader = SelectionReader()
     private let translator = CodexTranslationService()
     private let historyStore = TranslationHistoryStore()
+    private let learningTermStore = LearningTermStore()
     private let panelController = TranslationPanelController()
     private let settingsWindowController = SettingsWindowController()
 
@@ -13,6 +14,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var shortcutProfilesObserver: NSObjectProtocol?
     private var statusItem: NSStatusItem?
     private var translationTask: Task<Void, Never>?
+    private var learningTermTask: Task<Void, Never>?
     private var translationTaskGeneration = 0
     private var accessibilityRetryTask: Task<Void, Never>?
     private var startupAccessibilityPromptTask: Task<Void, Never>?
@@ -56,7 +58,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         panelController.onNewTranslationRequested = { [weak self] in
             self?.showNewTranslation()
         }
+        panelController.onLearningTermSaveRequested = { [weak self] sourceKind, selectedText in
+            self?.startLearningTermSave(sourceKind: sourceKind, selectedText: selectedText)
+        }
         panelController.setHistoryItems(historyStore.loadItems())
+        panelController.setLearningTerms(learningTermStore.loadTerms())
         configureApplicationMenu()
         configureStatusItem()
         observeShortcutProfileChanges()
@@ -74,6 +80,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationWillTerminate(_ notification: Notification) {
         startupAccessibilityPromptTask?.cancel()
         accessibilityRetryTask?.cancel()
+        learningTermTask?.cancel()
         unregisterHotKeys()
         if let shortcutProfilesObserver {
             NotificationCenter.default.removeObserver(shortcutProfilesObserver)
@@ -724,6 +731,81 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         currentHistoryItemID = nil
         panelController.activateOnNextShow()
         panelController.showNewTranslation()
+    }
+
+    private func startLearningTermSave(sourceKind: LearningTermSourceKind, selectedText: String) {
+        let termText = selectedText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !termText.isEmpty else {
+            panelController.showLearningTermError("Select text before saving it for learning.")
+            return
+        }
+        guard let result = currentTranslationResult else {
+            panelController.showLearningTermError("Translate original text before saving learning terms.")
+            return
+        }
+        guard learningTermTask == nil else {
+            panelController.showLearningTermError("A learning term is already being saved.")
+            return
+        }
+
+        let provider = panelController.translationProvider
+        let effort = panelController.reasoningEffort
+        let engineLabel = historyEngineLabel(provider: provider, effort: effort)
+        let historyID = currentHistoryItemID
+        panelController.showLearningTermSaving(sourceKind: sourceKind)
+
+        learningTermTask = Task { [weak self] in
+            guard let self else { return }
+            defer { self.learningTermTask = nil }
+            await self.saveLearningTerm(
+                text: termText,
+                sourceKind: sourceKind,
+                result: result,
+                provider: provider,
+                effort: effort,
+                engineLabel: engineLabel,
+                historyID: historyID
+            )
+        }
+    }
+
+    private func saveLearningTerm(
+        text: String,
+        sourceKind: LearningTermSourceKind,
+        result: TranslationResult,
+        provider: TranslationProvider,
+        effort: ReasoningEffort,
+        engineLabel: String,
+        historyID: Int64?
+    ) async {
+        do {
+            let translation = try await translator.translate(
+                text,
+                direction: result.direction,
+                effort: effort,
+                provider: provider,
+                promptTemplate: result.shortcutProfile.normalizedPromptTemplate
+            )
+            guard !Task.isCancelled else { return }
+
+            guard let term = learningTermStore.upsert(
+                text: text,
+                translation: translation,
+                sourceKind: sourceKind,
+                directionLabel: result.direction.label,
+                engineLabel: engineLabel,
+                historyID: historyID
+            ) else {
+                panelController.showLearningTermError("Could not save the selected text.")
+                return
+            }
+
+            panelController.showLearningTermSaved(term)
+        } catch is CancellationError {
+            return
+        } catch {
+            panelController.showLearningTermError(error.localizedDescription)
+        }
     }
 
     private func historyEngineLabel(provider: TranslationProvider, effort: ReasoningEffort) -> String {

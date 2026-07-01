@@ -1610,11 +1610,19 @@ private struct TranslationOverlayView: View {
         Button {
             saveLearningTerm(sourceKind, selectedText)
         } label: {
-            Image(systemName: model.isSavingLearningTerm ? "hourglass" : "bookmark.badge.plus")
-                .frame(width: 22, height: 22)
+            HStack(spacing: 4) {
+                Image(systemName: model.isSavingLearningTerm ? "hourglass" : "plus.circle")
+                    .font(.system(size: 11, weight: .semibold))
+                Text("Save")
+                    .font(.system(size: 11, weight: .semibold))
+            }
+            .padding(.horizontal, 6)
+            .frame(height: 22)
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.borderless)
+        .controlSize(.small)
         .disabled(isDisabled)
+        .opacity(isDisabled ? 0.45 : 1)
         .help("Save selected \(sourceKind.label) text for learning")
     }
 }

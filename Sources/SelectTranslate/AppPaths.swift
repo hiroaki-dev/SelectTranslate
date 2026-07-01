@@ -39,6 +39,10 @@ enum AppPaths {
         applicationSupportURL.appendingPathComponent("TranslationHistory.sqlite3")
     }
 
+    static var learningTermsDatabaseURL: URL {
+        applicationSupportURL.appendingPathComponent("LearningTerms.sqlite3")
+    }
+
     static func processEnvironment(workingDirectory: String) -> [String: String] {
         var environment = ProcessInfo.processInfo.environment
         let homeLocalBin = FileManager.default.homeDirectoryForCurrentUser

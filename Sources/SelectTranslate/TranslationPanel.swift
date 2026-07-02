@@ -1114,7 +1114,7 @@ private struct TranslationOverlayView: View {
             }
             .frame(height: 28)
 
-            editableTextBox(placeholder: "")
+            editableTextBox(placeholder: "", learningTerms: model.learningTerms)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
@@ -1189,8 +1189,7 @@ private struct TranslationOverlayView: View {
                 scrollText(
                     text: model.translatedText,
                     placeholder: model.message,
-                    isError: false,
-                    learningTerms: model.learningTerms
+                    isError: false
                 )
                 .frame(maxHeight: .infinity)
 
@@ -1541,7 +1540,7 @@ private struct TranslationOverlayView: View {
             )
     }
 
-    private func editableTextBox(placeholder: String) -> some View {
+    private func editableTextBox(placeholder: String, learningTerms: [LearningTerm]) -> some View {
         CommandReturnTextEditor(
             text: Binding(
                 get: { model.sourceText },
@@ -1549,6 +1548,7 @@ private struct TranslationOverlayView: View {
             ),
             placeholder: placeholder,
             isDisabled: isBusy,
+            learningTerms: learningTerms,
             onSelectionChange: { selectedText in
                 model.selectedOriginalLearningText = selectedText
             },
@@ -1627,6 +1627,70 @@ private struct TranslationOverlayView: View {
     }
 }
 
+private struct LearningHighlightMatch {
+    let range: NSRange
+    let term: LearningTerm
+}
+
+private enum LearningTermHighlighter {
+    static func matches(in text: String, terms: [LearningTerm]) -> [LearningHighlightMatch] {
+        let nsText = text as NSString
+        let textLength = nsText.length
+        guard textLength > 0 else { return [] }
+
+        var occupied = Array(repeating: false, count: textLength)
+        var matches: [LearningHighlightMatch] = []
+        let sortedTerms = terms
+            .filter { !$0.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+            .sorted {
+                ($0.text as NSString).length > ($1.text as NSString).length
+            }
+
+        for term in sortedTerms {
+            let termText = term.text.trimmingCharacters(in: .whitespacesAndNewlines)
+            var searchRange = NSRange(location: 0, length: textLength)
+
+            while searchRange.location < textLength {
+                let foundRange = nsText.range(
+                    of: termText,
+                    options: [.caseInsensitive, .diacriticInsensitive],
+                    range: searchRange
+                )
+                guard foundRange.location != NSNotFound else { break }
+
+                let end = foundRange.location + foundRange.length
+                if foundRange.length > 0,
+                   end <= occupied.count,
+                   !occupied[foundRange.location..<end].contains(true) {
+                    for index in foundRange.location..<end {
+                        occupied[index] = true
+                    }
+                    matches.append(.init(range: foundRange, term: term))
+                }
+
+                let nextLocation = max(foundRange.location + foundRange.length, foundRange.location + 1)
+                guard nextLocation < textLength else { break }
+                searchRange = NSRange(location: nextLocation, length: textLength - nextLocation)
+            }
+        }
+
+        return matches
+    }
+
+    static func addHighlightAttributes(to attributedText: NSMutableAttributedString, matches: [LearningHighlightMatch]) {
+        for match in matches {
+            attributedText.addAttributes(
+                [
+                    .backgroundColor: NSColor.controlAccentColor.withAlphaComponent(0.18),
+                    .underlineStyle: NSUnderlineStyle.single.rawValue,
+                    .underlineColor: NSColor.controlAccentColor.withAlphaComponent(0.8)
+                ],
+                range: match.range
+            )
+        }
+    }
+}
+
 private struct SelectableTextView: NSViewRepresentable {
     let text: String
     let placeholder: String
@@ -1697,7 +1761,7 @@ private struct SelectableTextView: NSViewRepresentable {
                 textView.textStorage?.setAttributedString(renderedText(displayText))
                 textView.learningHighlightMatches = parent.text.isEmpty
                     ? []
-                    : Self.highlightMatches(in: displayText, terms: parent.learningTerms)
+                    : LearningTermHighlighter.matches(in: displayText, terms: parent.learningTerms)
                 renderedSignature = signature
             }
             textView.font = NSFont.systemFont(ofSize: 15)
@@ -1721,62 +1785,12 @@ private struct SelectableTextView: NSViewRepresentable {
                 return attributedText
             }
 
-            for match in Self.highlightMatches(in: displayText, terms: parent.learningTerms) {
-                attributedText.addAttributes(
-                    [
-                        .backgroundColor: NSColor.controlAccentColor.withAlphaComponent(0.18),
-                        .underlineStyle: NSUnderlineStyle.single.rawValue,
-                        .underlineColor: NSColor.controlAccentColor.withAlphaComponent(0.8)
-                    ],
-                    range: match.range
-                )
-            }
+            LearningTermHighlighter.addHighlightAttributes(
+                to: attributedText,
+                matches: LearningTermHighlighter.matches(in: displayText, terms: parent.learningTerms)
+            )
 
             return attributedText
-        }
-
-        private static func highlightMatches(in text: String, terms: [LearningTerm]) -> [LearningTextView.HighlightMatch] {
-            let nsText = text as NSString
-            let textLength = nsText.length
-            guard textLength > 0 else { return [] }
-
-            var occupied = Array(repeating: false, count: textLength)
-            var matches: [LearningTextView.HighlightMatch] = []
-            let sortedTerms = terms
-                .filter { !$0.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
-                .sorted {
-                    ($0.text as NSString).length > ($1.text as NSString).length
-                }
-
-            for term in sortedTerms {
-                let termText = term.text.trimmingCharacters(in: .whitespacesAndNewlines)
-                var searchRange = NSRange(location: 0, length: textLength)
-
-                while searchRange.location < textLength {
-                    let foundRange = nsText.range(
-                        of: termText,
-                        options: [.caseInsensitive, .diacriticInsensitive],
-                        range: searchRange
-                    )
-                    guard foundRange.location != NSNotFound else { break }
-
-                    let end = foundRange.location + foundRange.length
-                    if foundRange.length > 0,
-                       end <= occupied.count,
-                       !occupied[foundRange.location..<end].contains(true) {
-                        for index in foundRange.location..<end {
-                            occupied[index] = true
-                        }
-                        matches.append(.init(range: foundRange, term: term))
-                    }
-
-                    let nextLocation = max(foundRange.location + foundRange.length, foundRange.location + 1)
-                    guard nextLocation < textLength else { break }
-                    searchRange = NSRange(location: nextLocation, length: textLength - nextLocation)
-                }
-            }
-
-            return matches
         }
 
         func textViewDidChangeSelection(_ notification: Notification) {
@@ -1796,12 +1810,7 @@ private struct SelectableTextView: NSViewRepresentable {
     }
 
     final class LearningTextView: NSTextView {
-        struct HighlightMatch {
-            let range: NSRange
-            let term: LearningTerm
-        }
-
-        var learningHighlightMatches: [HighlightMatch] = []
+        var learningHighlightMatches: [LearningHighlightMatch] = []
         private var learningTrackingArea: NSTrackingArea?
 
         override func updateTrackingAreas() {
@@ -1864,6 +1873,7 @@ private struct CommandReturnTextEditor: NSViewRepresentable {
     @Binding var text: String
     let placeholder: String
     let isDisabled: Bool
+    var learningTerms: [LearningTerm] = []
     var onSelectionChange: (String) -> Void = { _ in }
     let onSubmit: () -> Void
 
@@ -1905,6 +1915,7 @@ private struct CommandReturnTextEditor: NSViewRepresentable {
         }
         scrollView.documentView = textView
         context.coordinator.textView = textView
+        context.coordinator.applyLearningHighlights(to: textView)
         return scrollView
     }
 
@@ -1925,12 +1936,14 @@ private struct CommandReturnTextEditor: NSViewRepresentable {
         textView.onSelectionChange = { selectedText in
             context.coordinator.updateSelection(selectedText)
         }
+        context.coordinator.applyLearningHighlights(to: textView)
         textView.needsDisplay = true
     }
 
     final class Coordinator: NSObject, NSTextViewDelegate {
         var parent: CommandReturnTextEditor
-        weak var textView: NSTextView?
+        weak var textView: CommandReturnTextView?
+        private var learningHighlightSignature = ""
 
         init(_ parent: CommandReturnTextEditor) {
             self.parent = parent
@@ -1939,6 +1952,9 @@ private struct CommandReturnTextEditor: NSViewRepresentable {
         func textDidChange(_ notification: Notification) {
             guard let textView = notification.object as? NSTextView else { return }
             parent.text = textView.string
+            if let textView = textView as? CommandReturnTextView {
+                applyLearningHighlights(to: textView)
+            }
             textView.needsDisplay = true
         }
 
@@ -1956,11 +1972,48 @@ private struct CommandReturnTextEditor: NSViewRepresentable {
             parent.text = sourceText
             parent.onSubmit()
         }
+
+        func applyLearningHighlights(to textView: CommandReturnTextView) {
+            let signature = [
+                textView.string,
+                parent.learningTerms.map { "\($0.id):\($0.text):\($0.translation)" }.joined(separator: "\u{1f}")
+            ].joined(separator: "\u{1e}")
+            guard learningHighlightSignature != signature else { return }
+
+            let selectedRanges = textView.selectedRanges
+            let fullRange = NSRange(location: 0, length: (textView.string as NSString).length)
+            if fullRange.length > 0 {
+                textView.textStorage?.removeAttribute(.backgroundColor, range: fullRange)
+                textView.textStorage?.removeAttribute(.underlineStyle, range: fullRange)
+                textView.textStorage?.removeAttribute(.underlineColor, range: fullRange)
+                textView.textStorage?.addAttributes(
+                    [
+                        .font: NSFont.systemFont(ofSize: 15),
+                        .foregroundColor: NSColor.labelColor
+                    ],
+                    range: fullRange
+                )
+            }
+
+            let matches = LearningTermHighlighter.matches(in: textView.string, terms: parent.learningTerms)
+            if let textStorage = textView.textStorage {
+                LearningTermHighlighter.addHighlightAttributes(to: textStorage, matches: matches)
+            }
+            textView.learningHighlightMatches = matches
+            textView.selectedRanges = selectedRanges
+            textView.typingAttributes = [
+                .font: NSFont.systemFont(ofSize: 15),
+                .foregroundColor: NSColor.labelColor
+            ]
+            learningHighlightSignature = signature
+        }
     }
 
     final class CommandReturnTextView: NSTextView {
         var onCommandReturn: (() -> Void)?
         var onSelectionChange: ((String) -> Void)?
+        var learningHighlightMatches: [LearningHighlightMatch] = []
+        private var learningTrackingArea: NSTrackingArea?
         var placeholder: String = "" {
             didSet {
                 needsDisplay = true
@@ -2000,6 +2053,35 @@ private struct CommandReturnTextEditor: NSViewRepresentable {
             super.keyDown(with: event)
         }
 
+        override func updateTrackingAreas() {
+            if let learningTrackingArea {
+                removeTrackingArea(learningTrackingArea)
+            }
+
+            let trackingArea = NSTrackingArea(
+                rect: bounds,
+                options: [.activeInKeyWindow, .mouseMoved, .inVisibleRect],
+                owner: self,
+                userInfo: nil
+            )
+            addTrackingArea(trackingArea)
+            learningTrackingArea = trackingArea
+            super.updateTrackingAreas()
+        }
+
+        override func mouseMoved(with event: NSEvent) {
+            super.mouseMoved(with: event)
+
+            let point = convert(event.locationInWindow, from: nil)
+            guard let characterIndex = characterIndex(at: point),
+                  let match = learningHighlightMatches.first(where: { NSLocationInRange(characterIndex, $0.range) }) else {
+                toolTip = nil
+                return
+            }
+
+            toolTip = "\(match.term.text): \(match.term.translation)"
+        }
+
         override func setSelectedRange(_ charRange: NSRange) {
             super.setSelectedRange(charRange)
             publishSelection()
@@ -2019,6 +2101,27 @@ private struct CommandReturnTextEditor: NSViewRepresentable {
             }
 
             onSelectionChange?(String(string[range]).trimmingCharacters(in: .whitespacesAndNewlines))
+        }
+
+        private func characterIndex(at point: NSPoint) -> Int? {
+            guard let layoutManager, let textContainer else {
+                return nil
+            }
+
+            var containerPoint = point
+            containerPoint.x -= textContainerOrigin.x
+            containerPoint.y -= textContainerOrigin.y
+
+            let glyphIndex = layoutManager.glyphIndex(
+                for: containerPoint,
+                in: textContainer,
+                fractionOfDistanceThroughGlyph: nil
+            )
+            guard glyphIndex < layoutManager.numberOfGlyphs else {
+                return nil
+            }
+
+            return layoutManager.characterIndexForGlyph(at: glyphIndex)
         }
     }
 }

@@ -16,6 +16,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var translationTaskGeneration = 0
     private var accessibilityRetryTask: Task<Void, Never>?
     private var startupAccessibilityPromptTask: Task<Void, Never>?
+    private var historySearchTask: Task<Void, Never>?
     private var currentTranslationRequest: TranslationRequest?
     private var currentTranslationResult: TranslationResult?
     private var currentHistoryItemID: Int64?
@@ -53,10 +54,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         panelController.onHistoryItemSelected = { [weak self] item in
             self?.showHistoryItem(item)
         }
+        panelController.onHistorySearchChanged = { [weak self] query in
+            self?.scheduleHistorySearch(for: query)
+        }
+        panelController.onHistoryRefreshRequested = { [weak self] in
+            self?.refreshHistoryItems()
+        }
         panelController.onNewTranslationRequested = { [weak self] in
             self?.showNewTranslation()
         }
-        panelController.setHistoryItems(historyStore.loadItems())
+        refreshHistoryItems()
         configureApplicationMenu()
         configureStatusItem()
         observeShortcutProfileChanges()
@@ -74,6 +81,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationWillTerminate(_ notification: Notification) {
         startupAccessibilityPromptTask?.cancel()
         accessibilityRetryTask?.cancel()
+        historySearchTask?.cancel()
         unregisterHotKeys()
         if let shortcutProfilesObserver {
             NotificationCenter.default.removeObserver(shortcutProfilesObserver)
@@ -692,6 +700,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         currentHistoryItemID = item.id
         panelController.prependHistoryItem(item)
+    }
+
+    private func refreshHistoryItems() {
+        panelController.setHistoryItems(
+            historyStore.loadItems(matching: panelController.historySearchQuery)
+        )
+    }
+
+    private func scheduleHistorySearch(for query: String) {
+        historySearchTask?.cancel()
+        historySearchTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(nanoseconds: 250_000_000)
+            guard !Task.isCancelled,
+                  let self,
+                  self.panelController.historySearchQuery == query else {
+                return
+            }
+            self.refreshHistoryItems()
+        }
     }
 
     private func showHistoryItem(_ item: TranslationHistoryItem) {

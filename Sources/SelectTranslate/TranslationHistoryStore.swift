@@ -57,29 +57,56 @@ final class TranslationHistoryStore {
             let statement = try prepare(sql)
             defer { sqlite3_finalize(statement) }
 
-            sqlite3_bind_int(statement, 1, Int32(limit))
+            sqlite3_bind_int(statement, 1, Int32(boundedLimit(limit)))
 
             var items: [TranslationHistoryItem] = []
             while sqlite3_step(statement) == SQLITE_ROW {
-                items.append(
-                    TranslationHistoryItem(
-                        id: sqlite3_column_int64(statement, 0),
-                        createdAt: Date(timeIntervalSince1970: sqlite3_column_double(statement, 1)),
-                        originalText: columnText(statement, 2),
-                        translatedText: columnText(statement, 3),
-                        engineLabel: columnText(statement, 4),
-                        providerRawValue: columnText(statement, 5),
-                        directionLabel: columnText(statement, 6),
-                        replyDraftText: columnText(statement, 7),
-                        replyIntentText: columnText(statement, 8),
-                        translatedReplyText: columnText(statement, 9),
-                        replyMode: ReplyWorkflowMode(rawValue: columnText(statement, 10)) ?? .translation
-                    )
-                )
+                items.append(historyItem(from: statement))
             }
             return items
         } catch {
             NSLog("SelectTranslate history load failed: \(error.localizedDescription)")
+            return []
+        }
+    }
+
+    func loadItems(matching query: String, limit: Int = 200) -> [TranslationHistoryItem] {
+        let trimmedQuery = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedQuery.isEmpty else {
+            return loadItems(limit: limit)
+        }
+
+        do {
+            try openDatabase()
+            let sql = """
+            SELECT id, created_at, original_text, translated_text, engine_label, provider_raw_value, direction_label,
+                   reply_draft_text, reply_intent_text, translated_reply_text, reply_mode
+            FROM translation_history
+            WHERE original_text LIKE ? ESCAPE '\\'
+               OR translated_text LIKE ? ESCAPE '\\'
+               OR reply_draft_text LIKE ? ESCAPE '\\'
+               OR reply_intent_text LIKE ? ESCAPE '\\'
+               OR translated_reply_text LIKE ? ESCAPE '\\'
+            ORDER BY created_at DESC, id DESC
+            LIMIT ?;
+            """
+            let statement = try prepare(sql)
+            defer { sqlite3_finalize(statement) }
+
+            let escapedQuery = escapeLikeQuery(trimmedQuery)
+            let pattern = "%\(escapedQuery)%"
+            for index in 1...5 {
+                bindText(pattern, to: statement, at: Int32(index))
+            }
+            sqlite3_bind_int(statement, 6, Int32(boundedLimit(limit)))
+
+            var items: [TranslationHistoryItem] = []
+            while sqlite3_step(statement) == SQLITE_ROW {
+                items.append(historyItem(from: statement))
+            }
+            return items
+        } catch {
+            NSLog("SelectTranslate history search failed: \(error.localizedDescription)")
             return []
         }
     }
@@ -254,19 +281,7 @@ final class TranslationHistoryStore {
                 return nil
             }
 
-            return TranslationHistoryItem(
-                id: sqlite3_column_int64(statement, 0),
-                createdAt: Date(timeIntervalSince1970: sqlite3_column_double(statement, 1)),
-                originalText: columnText(statement, 2),
-                translatedText: columnText(statement, 3),
-                engineLabel: columnText(statement, 4),
-                providerRawValue: columnText(statement, 5),
-                directionLabel: columnText(statement, 6),
-                replyDraftText: columnText(statement, 7),
-                replyIntentText: columnText(statement, 8),
-                translatedReplyText: columnText(statement, 9),
-                replyMode: ReplyWorkflowMode(rawValue: columnText(statement, 10)) ?? .translation
-            )
+            return historyItem(from: statement)
         } catch {
             NSLog("SelectTranslate history item load failed: \(error.localizedDescription)")
             return nil
@@ -313,6 +328,33 @@ final class TranslationHistoryStore {
     private func bindText(_ value: String, to statement: OpaquePointer?, at index: Int32) {
         let transient = unsafeBitCast(-1, to: sqlite3_destructor_type.self)
         sqlite3_bind_text(statement, index, value, -1, transient)
+    }
+
+    private func historyItem(from statement: OpaquePointer?) -> TranslationHistoryItem {
+        TranslationHistoryItem(
+            id: sqlite3_column_int64(statement, 0),
+            createdAt: Date(timeIntervalSince1970: sqlite3_column_double(statement, 1)),
+            originalText: columnText(statement, 2),
+            translatedText: columnText(statement, 3),
+            engineLabel: columnText(statement, 4),
+            providerRawValue: columnText(statement, 5),
+            directionLabel: columnText(statement, 6),
+            replyDraftText: columnText(statement, 7),
+            replyIntentText: columnText(statement, 8),
+            translatedReplyText: columnText(statement, 9),
+            replyMode: ReplyWorkflowMode(rawValue: columnText(statement, 10)) ?? .translation
+        )
+    }
+
+    private func escapeLikeQuery(_ query: String) -> String {
+        query
+            .replacingOccurrences(of: "\\", with: "\\\\")
+            .replacingOccurrences(of: "%", with: "\\%")
+            .replacingOccurrences(of: "_", with: "\\_")
+    }
+
+    private func boundedLimit(_ limit: Int) -> Int {
+        min(max(limit, 0), 200)
     }
 
     private func columnText(_ statement: OpaquePointer?, _ index: Int32) -> String {

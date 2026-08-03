@@ -31,6 +31,7 @@ final class TranslationPanelModel: ObservableObject {
     @Published var isError: Bool = false
     @Published var canBackTranslate: Bool = false
     @Published var historyItems: [TranslationHistoryItem] = []
+    @Published var historySearchQuery: String = ""
     @Published var selectedHistoryID: Int64?
     @Published var isPlamoReady: Bool
     @Published var currentDirection: TranslationDirection? = nil
@@ -139,27 +140,6 @@ final class TranslationPanelModel: ObservableObject {
 
     func setHistoryItems(_ items: [TranslationHistoryItem]) {
         historyItems = items
-        if let selectedHistoryID, !items.contains(where: { $0.id == selectedHistoryID }) {
-            self.selectedHistoryID = nil
-        }
-    }
-
-    func prependHistoryItem(_ item: TranslationHistoryItem, limit: Int = 200) {
-        var items = historyItems.filter { $0.id != item.id }
-        items.insert(item, at: 0)
-        if items.count > limit {
-            items = Array(items.prefix(limit))
-        }
-        historyItems = items
-        selectedHistoryID = item.id
-    }
-
-    func updateHistoryItem(_ item: TranslationHistoryItem) {
-        guard let index = historyItems.firstIndex(where: { $0.id == item.id }) else {
-            return
-        }
-
-        historyItems[index] = item
     }
 
     func showHistoryItem(_ item: TranslationHistoryItem) {
@@ -257,6 +237,8 @@ final class TranslationPanelController {
     var onReplyTranslateRequested: (() -> Void)?
     var onReplyBackTranslateRequested: (() -> Void)?
     var onHistoryItemSelected: ((TranslationHistoryItem) -> Void)?
+    var onHistorySearchChanged: ((String) -> Void)?
+    var onHistoryRefreshRequested: (() -> Void)?
     var onNewTranslationRequested: (() -> Void)?
 
     var reasoningEffort: ReasoningEffort {
@@ -291,6 +273,10 @@ final class TranslationPanelController {
         model.isReplyCorrectionEnabled
     }
 
+    var historySearchQuery: String {
+        model.historySearchQuery
+    }
+
     func setTranslationProvider(_ provider: TranslationProvider) {
         model.translationProvider = provider
     }
@@ -312,11 +298,12 @@ final class TranslationPanelController {
     }
 
     func prependHistoryItem(_ item: TranslationHistoryItem) {
-        model.prependHistoryItem(item)
+        model.selectedHistoryID = item.id
+        onHistoryRefreshRequested?()
     }
 
     func updateHistoryItem(_ item: TranslationHistoryItem) {
-        model.updateHistoryItem(item)
+        onHistoryRefreshRequested?()
     }
 
     func clearReplyState(clearDraft: Bool) {
@@ -686,6 +673,9 @@ final class TranslationPanelController {
                 selectHistoryItem: { [weak self] item in
                     self?.onHistoryItemSelected?(item)
                 },
+                historySearchChanged: { [weak self] query in
+                    self?.onHistorySearchChanged?(query)
+                },
                 newTranslation: { [weak self] in
                     self?.onNewTranslationRequested?()
                 },
@@ -709,6 +699,7 @@ private struct TranslationOverlayView: View {
     let translateReply: () -> Void
     let backTranslateReply: () -> Void
     let selectHistoryItem: (TranslationHistoryItem) -> Void
+    let historySearchChanged: (String) -> Void
     let newTranslation: () -> Void
     let close: () -> Void
 
@@ -726,6 +717,9 @@ private struct TranslationOverlayView: View {
         }
         .onChange(of: model.translationProvider) { newProvider in
             providerChanged(newProvider)
+        }
+        .onChange(of: model.historySearchQuery) { query in
+            historySearchChanged(query)
         }
     }
 
@@ -761,8 +755,10 @@ private struct TranslationOverlayView: View {
                 .font(.system(size: 13, weight: .semibold))
                 .foregroundStyle(.secondary)
 
+            historySearchField
+
             if model.historyItems.isEmpty {
-                Text("No history yet")
+                Text(isHistorySearchActive ? "No matching history" : "No history yet")
                     .font(.system(size: 12))
                     .foregroundStyle(.secondary)
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -780,6 +776,41 @@ private struct TranslationOverlayView: View {
         .padding(14)
         .frame(width: 230, alignment: .topLeading)
         .frame(maxHeight: .infinity, alignment: .topLeading)
+    }
+
+    private var historySearchField: some View {
+        HStack(spacing: 6) {
+            Image(systemName: "magnifyingglass")
+                .foregroundStyle(.secondary)
+
+            TextField("Search history", text: $model.historySearchQuery)
+                .textFieldStyle(.plain)
+
+            if !model.historySearchQuery.isEmpty {
+                Button {
+                    model.historySearchQuery = ""
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .foregroundStyle(.secondary)
+                }
+                .buttonStyle(.plain)
+                .help("Clear history search")
+            }
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 7)
+        .background(
+            RoundedRectangle(cornerRadius: 7)
+                .fill(Color(nsColor: .textBackgroundColor).opacity(0.7))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 7)
+                .stroke(Color(nsColor: .separatorColor), lineWidth: 1)
+        )
+    }
+
+    private var isHistorySearchActive: Bool {
+        !model.historySearchQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
     private var mainContent: some View {

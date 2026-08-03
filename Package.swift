@@ -19,6 +19,13 @@ let package = Package(
                 .linkedFramework("Carbon"),
                 .linkedLibrary("sqlite3")
             ]
+        ),
+        .testTarget(
+            name: "SelectTranslateTests",
+            dependencies: ["SelectTranslate"],
+            linkerSettings: [
+                .linkedLibrary("sqlite3")
+            ]
         )
     ]
 )

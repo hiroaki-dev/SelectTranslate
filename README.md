@@ -118,6 +118,29 @@ This prevents mouse events from reaching terminal CLI applications. Mouse-driven
 
 See [cmux configuration](https://cmux.com/docs/configuration) for config locations and reloading, and [Ghostty's mouse-reporting reference](https://ghostty.org/docs/config/reference#mouse-reporting) for the option's behavior. This is a cmux/Ghostty setting, not an Apple Terminal setting.
 
+### Codex stops scrolling after disabling mouse reporting in cmux
+
+With `mouse-reporting = false`, Codex's alternate-screen UI may stop responding to mouse-wheel or trackpad scrolling because mouse events no longer reach the CLI. Switching mouse reporting back to `true` restored scrolling during investigation, but required Shift-drag for native text selection again.
+
+To keep both scrolling and ordinary drag selection, use Codex's inline terminal mode together with disabled mouse reporting:
+
+1. Keep `mouse-reporting = false` in `~/.config/ghostty/config` and reload cmux with `Command + Shift + ,`.
+2. Open `~/.codex/config.toml` and add or update this entry under `[tui]`:
+
+   ```toml
+   [tui]
+   alternate_screen = "never"
+   ```
+
+   Preserve the other settings. If `[tui]` already exists, add the entry to that section rather than creating a duplicate table.
+
+3. Exit Codex and restart it. To return to the latest conversation, run `codex resume --last`. Reloading cmux alone does not apply this Codex startup setting to an already-running session.
+4. Verify that mouse-wheel or trackpad scrolling works, then drag to select text without Shift and press `Control + F`.
+
+This combination was confirmed to allow both scrolling and translation without Shift in cmux. Codex uses the terminal's normal scrollback instead of the alternate screen; other TUIs can still lose mouse-driven features while mouse reporting is disabled. Claude Code is configured separately: use `"tui": "default"` as described above.
+
+See [OpenAI's advanced configuration documentation](https://learn.chatgpt.com/docs/config-file/config-advanced) for `tui.alternate_screen`. To restore Codex's default display behavior, remove the entry or set it to `"auto"`, then restart Codex. If you also restore `mouse-reporting = true`, use Shift-drag for native selection when a CLI captures mouse input.
+
 ## Codex command
 
 The app runs Codex with:

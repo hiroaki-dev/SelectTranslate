@@ -77,6 +77,47 @@ SelectTranslate requests the permission prompt each time `Control + F` is presse
 
 `swift run SelectTranslate` and `open build/SelectTranslate.app` are treated as different apps by macOS privacy permissions. Grant permission to the `.app` version when using the normal launch flow.
 
+## Troubleshooting
+
+### Claude Code text is highlighted, but Control + F cannot translate it
+
+If SelectTranslate opens but displays `Select text before pressing Control + F. Some apps do not expose selected text through Accessibility.`, check whether the terminal can actually copy the selection. In Apple Terminal, open Edit > Copy: if Copy is disabled despite a visible highlight, the highlight may belong to Claude Code's fullscreen UI rather than Terminal's native text selection.
+
+Claude Code's fullscreen mode can capture mouse selection, preventing SelectTranslate from reading or copying that highlight. This is a source-selection issue, not necessarily a SelectTranslate Accessibility permission issue. See the related [Claude Code issue](https://github.com/anthropics/claude-code/issues/76902).
+
+To use ordinary drag selection without a modifier key:
+
+1. Open `~/.claude/settings.json`.
+2. Change the top-level `"tui": "fullscreen"` setting to `"tui": "default"`. If the key is absent, add it. Preserve the other settings; the following is only the relevant entry, not a replacement for the entire file:
+
+   ```json
+   "tui": "default"
+   ```
+
+3. Restart Claude Code. This switches away from its fullscreen UI.
+4. Drag to select text normally, then press `Control + F`.
+
+If you want to keep fullscreen mode, use the terminal's native selection instead: hold Fn (Globe) while dragging in Apple Terminal, or Shift while dragging in cmux. Release the modifier before pressing `Control + F`. In Apple Terminal, Edit > Copy should be enabled for the native selection.
+
+During investigation, translation worked in Apple Terminal with Fn-drag even after all experimental SelectTranslate capture changes were reverted. Changing Claude Code to `"tui": "default"` also restored translation with ordinary drag selection. No Terminal-specific SelectTranslate workaround was needed for this case. Other terminal applications or CLI tools may behave differently.
+
+### cmux requires Shift-drag to select text
+
+When a terminal CLI captures mouse input, ordinary dragging may not create a native terminal selection. Shift-drag is the temporary workaround in cmux. To allow ordinary drag selection even when a CLI requests mouse input, disable mouse reporting:
+
+1. Open or create `~/.config/ghostty/config`, which cmux reads for terminal settings (not `~/.config/cmux/cmux.json`). Preserve other settings and add or update this line:
+
+   ```ini
+   mouse-reporting = false
+   ```
+
+2. Reload cmux configuration with `Command + Shift + ,`. If existing terminals do not pick up the change, restart cmux after saving your work.
+3. Drag to select text without Shift, then press `Control + F`.
+
+This prevents mouse events from reaching terminal CLI applications. Mouse-driven clicks and scrolling inside TUIs such as editors or Claude Code may no longer work as before; terminal-native selection and scrolling remain separate. The shared Ghostty config can also affect Ghostty itself. To restore mouse reporting, set `mouse-reporting = true` and reload, then use Shift-drag when native selection is needed.
+
+See [cmux configuration](https://cmux.com/docs/configuration) for config locations and reloading, and [Ghostty's mouse-reporting reference](https://ghostty.org/docs/config/reference#mouse-reporting) for the option's behavior. This is a cmux/Ghostty setting, not an Apple Terminal setting.
+
 ## Codex command
 
 The app runs Codex with:

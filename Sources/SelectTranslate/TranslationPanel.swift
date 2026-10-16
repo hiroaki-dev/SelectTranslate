@@ -549,7 +549,7 @@ final class TranslationPanelController {
         if isAccessibilityTrusted {
             model.translatedText = "Ready. Accessibility permission is enabled."
         } else {
-            model.translatedText = "Accessibility permission is not enabled yet. Use the SelectTranslate menu bar item and choose Open Accessibility Settings."
+            model.translatedText = "Accessibility permission is not enabled yet. Choose SelectTranslate > Actions > Open Accessibility Settings."
         }
 
         model.directionLabel = PromptSettings.defaultShortcutProfile.shortcutLabel

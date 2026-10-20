@@ -11,7 +11,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private var hotKeyManagers: [HotKeyManager] = []
     private var shortcutProfilesObserver: NSObjectProtocol?
-    private var statusItem: NSStatusItem?
     private var translationTask: Task<Void, Never>?
     private var translationTaskGeneration = 0
     private var accessibilityRetryTask: Task<Void, Never>?
@@ -65,7 +64,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         refreshHistoryItems()
         configureApplicationMenu()
-        configureStatusItem()
         observeShortcutProfileChanges()
         registerHotKeys()
         let isAccessibilityTrusted = selectionReader.isAccessibilityTrusted
@@ -124,22 +122,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         mainMenu.addItem(actionsMenuItem)
 
         NSApp.mainMenu = mainMenu
-    }
-
-    private func configureStatusItem() {
-        let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
-        item.button?.title = "Select"
-        item.button?.toolTip = "SelectTranslate"
-
-        let menu = NSMenu()
-        menu.addItem(makeMenuItem(title: "Translate Selection", action: #selector(translateSelectionFromMenu)))
-        menu.addItem(makeMenuItem(title: "Settings...", action: #selector(openSettings), keyEquivalent: ","))
-        menu.addItem(makeMenuItem(title: "Open Accessibility Settings", action: #selector(openAccessibilitySettings)))
-        menu.addItem(.separator())
-        menu.addItem(makeMenuItem(title: "Quit", action: #selector(quit), keyEquivalent: "q"))
-        item.menu = menu
-
-        statusItem = item
     }
 
     private func makeMenuItem(title: String, action: Selector, keyEquivalent: String = "") -> NSMenuItem {

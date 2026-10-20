@@ -56,8 +56,10 @@ private final class SettingsModel: ObservableObject {
     @Published var codexLoadsUserConfig: Bool {
         didSet {
             CodexSettings.loadsUserConfig = codexLoadsUserConfig
+            refreshCodexUserConfigWarning()
         }
     }
+    @Published var codexUserConfigWarning: String = ""
     @Published var codexConfigOverrides: String {
         didSet {
             CodexSettings.configOverrides = codexConfigOverrides
@@ -118,6 +120,9 @@ private final class SettingsModel: ObservableObject {
         codexModel = CodexSettings.model
         codexLoadsUserConfig = CodexSettings.loadsUserConfig
         codexConfigOverrides = CodexSettings.configOverrides
+        if CodexSettings.loadsUserConfig {
+            codexUserConfigWarning = Self.codexUserConfigWarning()
+        }
         apiBaseURL = OpenAICompatibleSettings.baseURL
         apiKey = OpenAICompatibleSettings.apiKey
         apiModel = OpenAICompatibleSettings.model
@@ -268,6 +273,19 @@ private final class SettingsModel: ObservableObject {
             plamoStatusMessage = isPlamoReady
                 ? "PLaMo is ready."
                 : "PLaMo setup is not installed yet."
+        }
+    }
+
+    private func refreshCodexUserConfigWarning() {
+        codexUserConfigWarning = codexLoadsUserConfig ? Self.codexUserConfigWarning() : ""
+    }
+
+    private static func codexUserConfigWarning() -> String {
+        do {
+            _ = try CodexConfigOverrides.mcpServerDisablingArguments(fromTOML: CodexConfigOverrides.userConfigText())
+            return ""
+        } catch {
+            return "Codex translations will fail until this is fixed: \(error.localizedDescription)"
         }
     }
 
@@ -959,6 +977,13 @@ private struct SettingsView: View {
                     .font(.system(size: 12))
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
+                if !model.codexUserConfigWarning.isEmpty {
+                    Text(model.codexUserConfigWarning)
+                        .font(.system(size: 12))
+                        .foregroundStyle(.red)
+                        .textSelection(.enabled)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
             }
 
             HStack(alignment: .firstTextBaseline) {

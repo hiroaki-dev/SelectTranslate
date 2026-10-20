@@ -44,17 +44,55 @@ enum CodexConfigOverrides {
     /// more than read-only access, whatever the user config or overrides say.
     static let enforcedArguments = ["--sandbox", "read-only", "-c", "approval_policy=\"never\""]
 
+    struct UnsafeUserConfigError: LocalizedError, Equatable {
+        let message: String
+
+        var errorDescription: String? {
+            message
+        }
+    }
+
     /// Disables the MCP servers defined in the user config, since translation does not need them.
-    /// Servers whose names need quoting cannot be addressed with `-c` and are left as configured.
-    static func mcpServerDisablingArguments(fromTOML text: String) -> [String] {
+    ///
+    /// Fails closed: `-c mcp_servers={}` does not remove configured servers, so when a server cannot be
+    /// addressed with `-c` (its name needs quoting) or the config cannot be parsed, this throws instead of
+    /// letting a server stay enabled unnoticed.
+    static func mcpServerDisablingArguments(fromTOML text: String) throws -> [String] {
         var parser = TOMLParser(text: text)
-        guard let root = try? parser.parseDocument(),
-              case .table(let servers) = root.values["mcp_servers"] else {
+        let root: TOMLTable
+        do {
+            root = try parser.parseDocument()
+        } catch let error as ImportError {
+            throw UnsafeUserConfigError(
+                message: "Could not parse the Codex config to disable its MCP servers (\(error.localizedDescription)). Fix the file or turn off Load ~/.codex/config.toml."
+            )
+        }
+
+        guard let servers = root.values["mcp_servers"] else {
             return []
         }
-        return servers.keys
-            .filter(isBareKey)
-            .flatMap { ["-c", "mcp_servers.\($0).enabled=false"] }
+        guard case .table(let serverTable) = servers else {
+            throw UnsafeUserConfigError(
+                message: "mcp_servers in the Codex config is not a table. Fix the file or turn off Load ~/.codex/config.toml."
+            )
+        }
+
+        let unaddressableNames = serverTable.keys.filter { !isBareKey($0) }
+        guard unaddressableNames.isEmpty else {
+            throw UnsafeUserConfigError(
+                message: "MCP servers \(unaddressableNames.map(quoted).joined(separator: ", ")) in the Codex config cannot be disabled for translation because their names need quoting. Rename them or turn off Load ~/.codex/config.toml."
+            )
+        }
+        return serverTable.keys.flatMap { ["-c", "mcp_servers.\($0).enabled=false"] }
+    }
+
+    /// Reads the user config, treating a missing file as empty like Codex does.
+    static func userConfigText() throws -> String {
+        let url = userConfigURL
+        guard FileManager.default.fileExists(atPath: url.path) else {
+            return ""
+        }
+        return try String(contentsOf: url, encoding: .utf8)
     }
 
     static func importLines(fromTOML text: String) throws -> ImportResult {

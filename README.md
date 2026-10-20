@@ -193,7 +193,7 @@ User overrides are passed before the app's own `model_reasoning_effort` override
 
 When enabled, the app omits `--ignore-user-config` so Codex reads the whole user config, including project entries. This option is off by default because those entries can make macOS show folder access prompts for protected folders such as Downloads. Config overrides are still applied on top.
 
-MCP servers defined in the user config are disabled for translation with `-c mcp_servers.<name>.enabled=false`, passed before config overrides so an explicit override can still enable one. Servers whose names need quoting cannot be addressed this way and keep their configured state.
+MCP servers defined in the user config are disabled for translation with `-c mcp_servers.<name>.enabled=false`, passed before config overrides so an explicit override can still enable one. `-c mcp_servers={}` does not remove configured servers, so if a server name needs quoting (and therefore cannot be addressed with `-c`), or the config cannot be parsed, Codex translations fail with an explanation instead of running with that server enabled. Settings shows the same warning while the option is on.
 
 **Always enforced**
 

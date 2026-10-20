@@ -281,9 +281,16 @@ final class CodexTranslationService {
         let configOverrideArguments = CodexConfigOverrides.commandArguments(from: CodexSettings.configOverrides)
         let processBox = CancellableProcessBox()
         let task = Task.detached(priority: .userInitiated) { [workspaceURL, effort, model, loadsUserConfig, configOverrideArguments, prompt, processBox] in
-            let userConfigText = loadsUserConfig
-                ? (try? String(contentsOf: CodexConfigOverrides.userConfigURL, encoding: .utf8)) ?? ""
-                : ""
+            var mcpServerDisablingArguments: [String] = []
+            if loadsUserConfig {
+                do {
+                    mcpServerDisablingArguments = try CodexConfigOverrides.mcpServerDisablingArguments(
+                        fromTOML: CodexConfigOverrides.userConfigText()
+                    )
+                } catch {
+                    throw TranslationServiceError.invalidConfiguration(provider: .codex, message: error.localizedDescription)
+                }
+            }
             try FileManager.default.createDirectory(at: workspaceURL, withIntermediateDirectories: true)
 
             let outputURL = FileManager.default.temporaryDirectory
@@ -308,7 +315,7 @@ final class CodexTranslationService {
                 arguments.append(contentsOf: ["--model", model])
             }
             // Disable user-config MCP servers before the overrides so an explicit override can re-enable one.
-            arguments.append(contentsOf: CodexConfigOverrides.mcpServerDisablingArguments(fromTOML: userConfigText))
+            arguments.append(contentsOf: mcpServerDisablingArguments)
             // User overrides come first so the enforced sandbox and the panel's reasoning effort below take precedence.
             arguments.append(contentsOf: configOverrideArguments)
             arguments.append(contentsOf: CodexConfigOverrides.enforcedArguments)

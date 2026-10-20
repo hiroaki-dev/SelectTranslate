@@ -122,23 +122,38 @@ final class CodexConfigOverridesTests: XCTestCase {
         }
     }
 
-    func testDisablesMCPServersFromUserConfig() {
+    func testDisablesMCPServersFromUserConfig() throws {
         let toml = """
+        model = "gpt-test"
+
         [mcp_servers.docs]
         command = "docs-server"
 
         [mcp_servers.computer-use]
         command = "computer-use"
+        """
+
+        XCTAssertEqual(try CodexConfigOverrides.mcpServerDisablingArguments(fromTOML: toml), [
+            "-c", "mcp_servers.docs.enabled=false",
+            "-c", "mcp_servers.computer-use.enabled=false",
+        ])
+        XCTAssertEqual(try CodexConfigOverrides.mcpServerDisablingArguments(fromTOML: "model = \"gpt-test\""), [])
+    }
+
+    func testFailsClosedWhenMCPServersCannotBeDisabled() {
+        let unaddressable = """
+        [mcp_servers.docs]
+        command = "docs-server"
 
         [mcp_servers."my.server"]
         command = "unreachable"
         """
 
-        XCTAssertEqual(CodexConfigOverrides.mcpServerDisablingArguments(fromTOML: toml), [
-            "-c", "mcp_servers.docs.enabled=false",
-            "-c", "mcp_servers.computer-use.enabled=false",
-        ])
-        XCTAssertEqual(CodexConfigOverrides.mcpServerDisablingArguments(fromTOML: "broken"), [])
+        XCTAssertThrowsError(try CodexConfigOverrides.mcpServerDisablingArguments(fromTOML: unaddressable)) { error in
+            XCTAssertTrue(error.localizedDescription.contains("\"my.server\""))
+        }
+        XCTAssertThrowsError(try CodexConfigOverrides.mcpServerDisablingArguments(fromTOML: "broken"))
+        XCTAssertThrowsError(try CodexConfigOverrides.mcpServerDisablingArguments(fromTOML: "mcp_servers = 1"))
     }
 
     func testBuildsCommandArgumentsFromNonEmptyLines() {

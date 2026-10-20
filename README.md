@@ -1,5 +1,7 @@
 # SelectTranslate
 
+English | [日本語](README.ja.md)
+
 macOS utility app that translates selected text with `codex exec`, `claude -p`, local PLaMo MLX, or an OpenAI-compatible chat completions API, and shows the source and translated text in a floating panel.
 
 ## Requirements

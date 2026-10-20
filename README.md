@@ -165,6 +165,32 @@ If a Codex model is configured in Settings, the app also passes:
 
 The active shortcut set's prompt template is rendered and sent to `codex exec` over stdin.
 
+### Using settings from `~/.codex/config.toml`
+
+Because of `--ignore-user-config`, settings such as a custom `model_provider` in `~/.codex/config.toml` are not applied by default. If Codex works in Terminal but SelectTranslate fails with errors such as `401 Unauthorized`, use one of the following options in `SelectTranslate` > `Settings...` > `Model` > `Codex`.
+
+**Config overrides (recommended)**
+
+Write one `key=value` per line. Each line is passed as `-c key=value`. Empty lines and lines starting with `#` are ignored.
+
+```text
+model_provider="my-provider"
+model_providers.my-provider.name="my-provider"
+model_providers.my-provider.base_url="https://example.com/v1"
+```
+
+`Import Current Config` replaces the field with the contents of `~/.codex/config.toml` (or `$CODEX_HOME/config.toml`), converted into `key=value` lines:
+
+- Each value is written as a dotted key path such as `tui.alternate_screen="never"`. Codex splits `-c` keys on every `.` and does not understand quoted key segments, so a table that contains such a key (for example `[model_providers."my.provider"]`) is written as one inline table on its parent path.
+- `projects`, `mcp_servers`, `notify`, `plugins`, and `marketplaces` are imported as commented-out lines because translation does not need them. They list trusted folders or start MCP servers, plugins, or notification commands on every translation. Remove the leading `#` to enable a line.
+- Importing again overwrites any edits you made in the field.
+
+User overrides are passed before the app's own `model_reasoning_effort` override, so the panel's `Effort` selection still takes precedence.
+
+**Load ~/.codex/config.toml**
+
+When enabled, the app omits `--ignore-user-config` so Codex reads the whole user config, including project entries. This option is off by default because those entries can make macOS show folder access prompts for protected folders such as Downloads. Config overrides are still applied on top.
+
 ## Claude command
 
 The app runs Claude with:

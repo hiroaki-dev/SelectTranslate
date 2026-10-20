@@ -53,6 +53,20 @@ private final class SettingsModel: ObservableObject {
             CodexSettings.model = codexModel
         }
     }
+    @Published var codexLoadsUserConfig: Bool {
+        didSet {
+            CodexSettings.loadsUserConfig = codexLoadsUserConfig
+            refreshCodexUserConfigWarning()
+        }
+    }
+    @Published var codexUserConfigWarning: String = ""
+    @Published var codexConfigOverrides: String {
+        didSet {
+            CodexSettings.configOverrides = codexConfigOverrides
+        }
+    }
+    @Published var codexConfigImportMessage: String = ""
+    @Published var isCodexConfigImportError: Bool = false
     @Published var apiBaseURL: String {
         didSet {
             OpenAICompatibleSettings.baseURL = apiBaseURL
@@ -104,6 +118,11 @@ private final class SettingsModel: ObservableObject {
         shortcutProfiles = loadedProfiles
         selectedShortcutID = loadedProfiles.first?.id ?? ShortcutProfile.defaultProfile().id
         codexModel = CodexSettings.model
+        codexLoadsUserConfig = CodexSettings.loadsUserConfig
+        codexConfigOverrides = CodexSettings.configOverrides
+        if CodexSettings.loadsUserConfig {
+            codexUserConfigWarning = Self.codexUserConfigWarning()
+        }
         apiBaseURL = OpenAICompatibleSettings.baseURL
         apiKey = OpenAICompatibleSettings.apiKey
         apiModel = OpenAICompatibleSettings.model
@@ -254,6 +273,40 @@ private final class SettingsModel: ObservableObject {
             plamoStatusMessage = isPlamoReady
                 ? "PLaMo is ready."
                 : "PLaMo setup is not installed yet."
+        }
+    }
+
+    private func refreshCodexUserConfigWarning() {
+        codexUserConfigWarning = codexLoadsUserConfig ? Self.codexUserConfigWarning() : ""
+    }
+
+    private static func codexUserConfigWarning() -> String {
+        do {
+            _ = try CodexConfigOverrides.mcpServerDisablingArguments(fromTOML: CodexConfigOverrides.userConfigText())
+            return ""
+        } catch {
+            return "Codex translations will fail until this is fixed: \(error.localizedDescription)"
+        }
+    }
+
+    func importCodexConfig() {
+        let configURL = CodexConfigOverrides.userConfigURL
+        do {
+            let text = try String(contentsOf: configURL, encoding: .utf8)
+            let result = try CodexConfigOverrides.importLines(fromTOML: text)
+            codexConfigOverrides = result.lines.joined(separator: "\n")
+            var message = "Imported \(result.lines.count) entries from \(configURL.path)."
+            if !result.disabledKeys.isEmpty {
+                message += " Commented out because translation does not need them: \(result.disabledKeys.joined(separator: ", ")). Remove the leading # to enable a line."
+            }
+            codexConfigImportMessage = message
+            isCodexConfigImportError = false
+        } catch let error as CodexConfigOverrides.ImportError {
+            codexConfigImportMessage = "Could not parse \(configURL.path). \(error.localizedDescription)"
+            isCodexConfigImportError = true
+        } catch {
+            codexConfigImportMessage = "Could not read \(configURL.path). \(error.localizedDescription)"
+            isCodexConfigImportError = true
         }
     }
 
@@ -915,6 +968,63 @@ private struct SettingsView: View {
                     TextField("Enter the model name", text: $model.codexModel)
                         .textFieldStyle(.roundedBorder)
                 }
+            }
+
+            VStack(alignment: .leading, spacing: 4) {
+                Toggle("Load ~/.codex/config.toml", isOn: $model.codexLoadsUserConfig)
+                    .font(.system(size: 12, weight: .medium))
+                Text("Off by default. When on, Codex also reads project entries, which may trigger macOS folder access prompts for protected folders such as Downloads. MCP servers in the config are disabled for translation.")
+                    .font(.system(size: 12))
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                if !model.codexUserConfigWarning.isEmpty {
+                    Text(model.codexUserConfigWarning)
+                        .font(.system(size: 12))
+                        .foregroundStyle(.red)
+                        .textSelection(.enabled)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+
+            HStack(alignment: .firstTextBaseline) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Config overrides")
+                        .font(.system(size: 12, weight: .medium))
+                    Text("One key=value per line, passed as codex exec -c key=value. Lines starting with # are ignored.")
+                        .font(.system(size: 12))
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+
+                Spacer()
+
+                Button("Import Current Config") {
+                    model.importCodexConfig()
+                }
+                .help("Replace the overrides with the entries in ~/.codex/config.toml")
+            }
+
+            // A fixed height keeps long imported configs scrolling inside the editor instead of growing the page.
+            TextEditor(text: $model.codexConfigOverrides)
+                .font(.system(size: 12, design: .monospaced))
+                .scrollContentBackground(.hidden)
+                .padding(8)
+                .background(
+                    RoundedRectangle(cornerRadius: 8)
+                        .fill(Color(nsColor: .textBackgroundColor))
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 8)
+                        .stroke(Color(nsColor: .separatorColor), lineWidth: 1)
+                )
+                .frame(height: 220)
+
+            if !model.codexConfigImportMessage.isEmpty {
+                Text(model.codexConfigImportMessage)
+                    .font(.system(size: 12))
+                    .foregroundStyle(model.isCodexConfigImportError ? .red : .secondary)
+                    .textSelection(.enabled)
+                    .fixedSize(horizontal: false, vertical: true)
             }
         }
     }

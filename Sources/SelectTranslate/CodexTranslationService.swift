@@ -277,8 +277,20 @@ final class CodexTranslationService {
         effort: ReasoningEffort
     ) async throws -> String {
         let model = CodexSettings.model
+        let loadsUserConfig = CodexSettings.loadsUserConfig
+        let configOverrideArguments = CodexConfigOverrides.commandArguments(from: CodexSettings.configOverrides)
         let processBox = CancellableProcessBox()
-        let task = Task.detached(priority: .userInitiated) { [workspaceURL, effort, model, prompt, processBox] in
+        let task = Task.detached(priority: .userInitiated) { [workspaceURL, effort, model, loadsUserConfig, configOverrideArguments, prompt, processBox] in
+            var mcpServerDisablingArguments: [String] = []
+            if loadsUserConfig {
+                do {
+                    mcpServerDisablingArguments = try CodexConfigOverrides.mcpServerDisablingArguments(
+                        fromTOML: CodexConfigOverrides.userConfigText()
+                    )
+                } catch {
+                    throw TranslationServiceError.invalidConfiguration(provider: .codex, message: error.localizedDescription)
+                }
+            }
             try FileManager.default.createDirectory(at: workspaceURL, withIntermediateDirectories: true)
 
             let outputURL = FileManager.default.temporaryDirectory
@@ -294,15 +306,19 @@ final class CodexTranslationService {
 
             process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
             process.currentDirectoryURL = workspaceURL
-            var arguments = [
-                "codex",
-                "exec",
-                "--ignore-user-config",
-                "--skip-git-repo-check",
-            ]
+            var arguments = ["codex", "exec"]
+            if !loadsUserConfig {
+                arguments.append("--ignore-user-config")
+            }
+            arguments.append("--skip-git-repo-check")
             if !model.isEmpty {
                 arguments.append(contentsOf: ["--model", model])
             }
+            // Disable user-config MCP servers before the overrides so an explicit override can re-enable one.
+            arguments.append(contentsOf: mcpServerDisablingArguments)
+            // User overrides come first so the enforced sandbox and the panel's reasoning effort below take precedence.
+            arguments.append(contentsOf: configOverrideArguments)
+            arguments.append(contentsOf: CodexConfigOverrides.enforcedArguments)
             arguments.append(contentsOf: [
                 "-c",
                 "model_reasoning_effort=\"\(effort.rawValue)\"",

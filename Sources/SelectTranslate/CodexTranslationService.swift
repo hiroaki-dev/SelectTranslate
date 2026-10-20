@@ -277,8 +277,10 @@ final class CodexTranslationService {
         effort: ReasoningEffort
     ) async throws -> String {
         let model = CodexSettings.model
+        let loadsUserConfig = CodexSettings.loadsUserConfig
+        let configOverrideArguments = CodexConfigOverrides.commandArguments(from: CodexSettings.configOverrides)
         let processBox = CancellableProcessBox()
-        let task = Task.detached(priority: .userInitiated) { [workspaceURL, effort, model, prompt, processBox] in
+        let task = Task.detached(priority: .userInitiated) { [workspaceURL, effort, model, loadsUserConfig, configOverrideArguments, prompt, processBox] in
             try FileManager.default.createDirectory(at: workspaceURL, withIntermediateDirectories: true)
 
             let outputURL = FileManager.default.temporaryDirectory
@@ -294,15 +296,16 @@ final class CodexTranslationService {
 
             process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
             process.currentDirectoryURL = workspaceURL
-            var arguments = [
-                "codex",
-                "exec",
-                "--ignore-user-config",
-                "--skip-git-repo-check",
-            ]
+            var arguments = ["codex", "exec"]
+            if !loadsUserConfig {
+                arguments.append("--ignore-user-config")
+            }
+            arguments.append("--skip-git-repo-check")
             if !model.isEmpty {
                 arguments.append(contentsOf: ["--model", model])
             }
+            // User overrides come first so the panel's reasoning effort below still takes precedence.
+            arguments.append(contentsOf: configOverrideArguments)
             arguments.append(contentsOf: [
                 "-c",
                 "model_reasoning_effort=\"\(effort.rawValue)\"",

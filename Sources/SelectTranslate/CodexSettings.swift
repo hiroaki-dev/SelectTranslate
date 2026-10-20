@@ -2,6 +2,8 @@ import Foundation
 
 enum CodexSettings {
     private static let modelDefaultsKey = "codexModel"
+    private static let loadsUserConfigDefaultsKey = "codexLoadsUserConfig"
+    private static let configOverridesDefaultsKey = "codexConfigOverrides"
 
     static var model: String {
         get {
@@ -9,6 +11,26 @@ enum CodexSettings {
         }
         set {
             UserDefaults.standard.set(newValue.trimmingCharacters(in: .whitespacesAndNewlines), forKey: modelDefaultsKey)
+        }
+    }
+
+    /// When enabled, `codex exec` reads `~/.codex/config.toml` instead of running with `--ignore-user-config`.
+    static var loadsUserConfig: Bool {
+        get {
+            UserDefaults.standard.bool(forKey: loadsUserConfigDefaultsKey)
+        }
+        set {
+            UserDefaults.standard.set(newValue, forKey: loadsUserConfigDefaultsKey)
+        }
+    }
+
+    /// One `key=value` per line, each passed to `codex exec` as `-c key=value`.
+    static var configOverrides: String {
+        get {
+            UserDefaults.standard.string(forKey: configOverridesDefaultsKey) ?? ""
+        }
+        set {
+            UserDefaults.standard.set(newValue, forKey: configOverridesDefaultsKey)
         }
     }
 

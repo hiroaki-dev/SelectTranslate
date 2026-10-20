@@ -193,6 +193,18 @@ User overrides are passed before the app's own `model_reasoning_effort` override
 
 When enabled, the app omits `--ignore-user-config` so Codex reads the whole user config, including project entries. This option is off by default because those entries can make macOS show folder access prompts for protected folders such as Downloads. Config overrides are still applied on top.
 
+MCP servers defined in the user config are disabled for translation with `-c mcp_servers.<name>.enabled=false`, passed before config overrides so an explicit override can still enable one. Servers whose names need quoting cannot be addressed this way and keep their configured state.
+
+**Always enforced**
+
+Selected text is sent to Codex as part of the prompt, so it must not be able to make Codex run commands with more than read-only access. After config overrides, the app always passes:
+
+```sh
+--sandbox read-only -c 'approval_policy="never"'
+```
+
+These take precedence over the user config and config overrides.
+
 ## Claude command
 
 The app runs Claude with:

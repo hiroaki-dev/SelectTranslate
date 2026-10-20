@@ -281,6 +281,9 @@ final class CodexTranslationService {
         let configOverrideArguments = CodexConfigOverrides.commandArguments(from: CodexSettings.configOverrides)
         let processBox = CancellableProcessBox()
         let task = Task.detached(priority: .userInitiated) { [workspaceURL, effort, model, loadsUserConfig, configOverrideArguments, prompt, processBox] in
+            let userConfigText = loadsUserConfig
+                ? (try? String(contentsOf: CodexConfigOverrides.userConfigURL, encoding: .utf8)) ?? ""
+                : ""
             try FileManager.default.createDirectory(at: workspaceURL, withIntermediateDirectories: true)
 
             let outputURL = FileManager.default.temporaryDirectory
@@ -304,8 +307,11 @@ final class CodexTranslationService {
             if !model.isEmpty {
                 arguments.append(contentsOf: ["--model", model])
             }
-            // User overrides come first so the panel's reasoning effort below still takes precedence.
+            // Disable user-config MCP servers before the overrides so an explicit override can re-enable one.
+            arguments.append(contentsOf: CodexConfigOverrides.mcpServerDisablingArguments(fromTOML: userConfigText))
+            // User overrides come first so the enforced sandbox and the panel's reasoning effort below take precedence.
             arguments.append(contentsOf: configOverrideArguments)
+            arguments.append(contentsOf: CodexConfigOverrides.enforcedArguments)
             arguments.append(contentsOf: [
                 "-c",
                 "model_reasoning_effort=\"\(effort.rawValue)\"",

@@ -193,6 +193,18 @@ model_providers.my-provider.base_url="https://example.com/v1"
 
 有効にすると `--ignore-user-config` を付けずに実行するので、Codex は project エントリを含むユーザー設定全体を読み込みます。これらのエントリによって、Downloads などの保護フォルダへのアクセス許可ダイアログが macOS に表示されることがあるため、デフォルトではオフです。Config overrides はこの場合も上書きとして適用されます。
 
+ユーザー設定に定義された MCP サーバーは、翻訳時には `-c mcp_servers.<name>.enabled=false` で無効にします。これは Config overrides より前に渡すので、上書き設定で明示的に有効にすることもできます。名前に引用符が必要なサーバーはこの方法で指定できないため、設定どおりの状態のままになります。
+
+**常に強制される設定**
+
+選択テキストはプロンプトの一部として Codex に送られます。そのため、選択テキストによって Codex が読み取り専用を超える権限でコマンドを実行できないようにする必要があります。アプリは Config overrides の後に、常に次の引数を渡します:
+
+```sh
+--sandbox read-only -c 'approval_policy="never"'
+```
+
+これらはユーザー設定や Config overrides より優先されます。
+
 ## Claude コマンド
 
 アプリは Claude を次のように実行します:

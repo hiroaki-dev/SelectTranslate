@@ -955,7 +955,7 @@ private struct SettingsView: View {
             VStack(alignment: .leading, spacing: 4) {
                 Toggle("Load ~/.codex/config.toml", isOn: $model.codexLoadsUserConfig)
                     .font(.system(size: 12, weight: .medium))
-                Text("Off by default. When on, Codex also reads project entries, which may trigger macOS folder access prompts for protected folders such as Downloads.")
+                Text("Off by default. When on, Codex also reads project entries, which may trigger macOS folder access prompts for protected folders such as Downloads. MCP servers in the config are disabled for translation.")
                     .font(.system(size: 12))
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)

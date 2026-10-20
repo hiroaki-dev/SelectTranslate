@@ -40,6 +40,23 @@ enum CodexConfigOverrides {
             .flatMap { ["-c", $0] }
     }
 
+    /// Passed after user overrides so selected text sent as a prompt can never run commands with
+    /// more than read-only access, whatever the user config or overrides say.
+    static let enforcedArguments = ["--sandbox", "read-only", "-c", "approval_policy=\"never\""]
+
+    /// Disables the MCP servers defined in the user config, since translation does not need them.
+    /// Servers whose names need quoting cannot be addressed with `-c` and are left as configured.
+    static func mcpServerDisablingArguments(fromTOML text: String) -> [String] {
+        var parser = TOMLParser(text: text)
+        guard let root = try? parser.parseDocument(),
+              case .table(let servers) = root.values["mcp_servers"] else {
+            return []
+        }
+        return servers.keys
+            .filter(isBareKey)
+            .flatMap { ["-c", "mcp_servers.\($0).enabled=false"] }
+    }
+
     static func importLines(fromTOML text: String) throws -> ImportResult {
         var parser = TOMLParser(text: text)
         let root = try parser.parseDocument()

@@ -122,6 +122,25 @@ final class CodexConfigOverridesTests: XCTestCase {
         }
     }
 
+    func testDisablesMCPServersFromUserConfig() {
+        let toml = """
+        [mcp_servers.docs]
+        command = "docs-server"
+
+        [mcp_servers.computer-use]
+        command = "computer-use"
+
+        [mcp_servers."my.server"]
+        command = "unreachable"
+        """
+
+        XCTAssertEqual(CodexConfigOverrides.mcpServerDisablingArguments(fromTOML: toml), [
+            "-c", "mcp_servers.docs.enabled=false",
+            "-c", "mcp_servers.computer-use.enabled=false",
+        ])
+        XCTAssertEqual(CodexConfigOverrides.mcpServerDisablingArguments(fromTOML: "broken"), [])
+    }
+
     func testBuildsCommandArgumentsFromNonEmptyLines() {
         let text = """
         model_provider="gateway"

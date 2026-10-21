@@ -260,7 +260,7 @@ PLaMo は翻訳に特化したモデルで、チャット向けの instruction t
 
 Apple Intelligence に対応した Mac の macOS 26 以降で、システム設定の Apple Intelligence がオンになっている必要があります。デバイスが対応していない場合、Apple Intelligence がオフの場合、モデルの準備ができていない場合（ダウンロード中など）は使えません。
 
-アプリから Apple Intelligence をオンにしたり、モデルのダウンロードを始めたりすることはできません。Apple Intelligence がオフの間は、`SelectTranslate` > `Settings...` > `Model` に `Open Apple Intelligence Settings` ボタンが表示され、押すと システム設定 > Apple Intelligence と Siri が開きます。オンにすると、macOS がモデルをダウンロードします。SelectTranslate は、アプリがアクティブになったときと、待っている間は数秒ごとにモデルが使えるかを確認するので、アプリを再起動しなくても `Apple` エンジンを選べるようになります。
+アプリから Apple Intelligence をオンにしたり、モデルのダウンロードを始めたりすることはできません。Apple Intelligence がオフの間は、`SelectTranslate` > `Settings...` > `Model` の `Engine` の横に、`Prepare PLaMo` と同じように `Turn On Apple Intelligence` ボタンが表示されます。押すと システム設定 > Apple Intelligence と Siri が開きます。オンにすると、macOS がモデルをダウンロードします。SelectTranslate は、アプリがアクティブになったときと、待っている間は数秒ごとにモデルが使えるかを確認するので、アプリを再起動しなくても `Apple` エンジンを選べるようになります。
 
 アプリは、現在のショートカットセットのプロンプトテンプレートを展開し、訳文だけを返すよう指示した新しい `LanguageModelSession` に送ります。返信の翻訳と返信の添削も同じエンジンで動きます。`Effort` の設定はこのエンジンには適用されません。
 

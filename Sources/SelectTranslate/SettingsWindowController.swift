@@ -567,7 +567,7 @@ private struct SettingsView: View {
                     codexSection
                 }
 
-                if model.translationProvider == .foundationModels || model.foundationModelsAvailability != .available {
+                if model.translationProvider == .foundationModels {
                     Divider()
                     foundationModelsSection
                 }
@@ -671,7 +671,7 @@ private struct SettingsView: View {
                     isPlamoReady: model.isPlamoReady,
                     foundationModelsAvailability: model.foundationModelsAvailability,
                     isDisabled: model.isPreparingPlamo,
-                    width: 450
+                    width: 420
                 )
 
                 if model.isPreparingPlamo {
@@ -681,11 +681,33 @@ private struct SettingsView: View {
 
                 Spacer()
 
-                if model.translationProvider == .plamo || !model.isPlamoReady {
-                    Button("Prepare PLaMo") {
-                        model.preparePlamo()
+                // Stacked so both setup actions fit when PLaMo and Apple Intelligence both need attention.
+                VStack(alignment: .trailing, spacing: 6) {
+                    if model.translationProvider == .plamo || !model.isPlamoReady {
+                        Button("Prepare PLaMo") {
+                            model.preparePlamo()
+                        }
+                        .disabled(model.isPreparingPlamo || model.isPlamoReady)
                     }
-                    .disabled(model.isPreparingPlamo || model.isPlamoReady)
+
+                    switch model.foundationModelsAvailability {
+                    case .appleIntelligenceNotEnabled:
+                        Button("Turn On Apple Intelligence") {
+                            FoundationModelsTranslator.openAppleIntelligenceSettings()
+                        }
+                        .help("Open System Settings > Apple Intelligence & Siri. Apps cannot turn it on themselves.")
+                    case .modelNotReady:
+                        HStack(spacing: 6) {
+                            ProgressView()
+                                .controlSize(.small)
+                            Text("Preparing Apple model…")
+                                .font(.system(size: 12))
+                                .foregroundStyle(.secondary)
+                        }
+                        .help("macOS is preparing the on-device model. The Apple engine becomes available when it is ready.")
+                    default:
+                        EmptyView()
+                    }
                 }
             }
 
@@ -1061,24 +1083,13 @@ private struct SettingsView: View {
 
     private var foundationModelsSection: some View {
         VStack(alignment: .leading, spacing: 10) {
-            HStack(alignment: .firstTextBaseline) {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("Apple Foundation Models")
-                        .font(.system(size: 14, weight: .semibold))
-                    Text("Uses Apple's on-device language model. No CLI or API key is needed. Requires macOS 26 or later with Apple Intelligence turned on. After you turn it on, macOS downloads the model and this engine becomes available automatically.")
-                        .font(.system(size: 12))
-                        .foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-
-                Spacer()
-
-                if model.foundationModelsAvailability == .appleIntelligenceNotEnabled {
-                    Button("Open Apple Intelligence Settings") {
-                        FoundationModelsTranslator.openAppleIntelligenceSettings()
-                    }
-                    .help("Open System Settings > Apple Intelligence & Siri")
-                }
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Apple Foundation Models")
+                    .font(.system(size: 14, weight: .semibold))
+                Text("Uses Apple's on-device language model. No CLI or API key is needed. Requires macOS 26 or later with Apple Intelligence turned on.")
+                    .font(.system(size: 12))
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
             }
 
             HStack(spacing: 6) {

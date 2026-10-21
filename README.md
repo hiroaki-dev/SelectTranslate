@@ -260,7 +260,7 @@ The `Apple` engine uses Apple's on-device system language model through the [Fou
 
 It requires macOS 26 or later on a Mac that supports Apple Intelligence, with Apple Intelligence turned on in System Settings. The engine is unavailable when the device is not eligible, Apple Intelligence is turned off, or the model is not ready yet (for example, while it is still downloading).
 
-Apps cannot turn on Apple Intelligence or start the model download themselves. While Apple Intelligence is off, `SelectTranslate` > `Settings...` > `Model` shows `Open Apple Intelligence Settings`, which opens System Settings > Apple Intelligence & Siri. After you turn it on, macOS downloads the model. SelectTranslate checks the model's availability whenever the app becomes active and every few seconds while it is waiting, so the `Apple` engine becomes selectable without restarting the app.
+Apps cannot turn on Apple Intelligence or start the model download themselves. While Apple Intelligence is off, `SelectTranslate` > `Settings...` > `Model` shows `Turn On Apple Intelligence` next to the `Engine` control, like `Prepare PLaMo`. It opens System Settings > Apple Intelligence & Siri. After you turn it on, macOS downloads the model. SelectTranslate checks the model's availability whenever the app becomes active and every few seconds while it is waiting, so the `Apple` engine becomes selectable without restarting the app.
 
 The app sends the active shortcut set's rendered prompt template to a new `LanguageModelSession`, with instructions to return only the translated text. Contextual reply and reply correction use the same engine. The `Effort` control does not apply to this engine.
 

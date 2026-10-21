@@ -32,7 +32,9 @@ struct ProviderSegmentedControl: View {
 
     private func segment(_ provider: TranslationProvider) -> some View {
         let selected = selection == provider
-        let disabled = isDisabled || (provider == .plamo && !isPlamoReady)
+        let disabled = isDisabled ||
+            (provider == .plamo && !isPlamoReady) ||
+            (provider == .foundationModels && !FoundationModelsTranslator.isAvailable)
 
         return Button {
             guard !disabled else { return }
@@ -66,6 +68,12 @@ struct ProviderSegmentedControl: View {
     private func helpText(for provider: TranslationProvider, disabled: Bool) -> String {
         if provider == .plamo, disabled, !isPlamoReady {
             return "Prepare PLaMo in Settings before selecting it"
+        }
+        if provider == .foundationModels {
+            if let unavailableReason = FoundationModelsTranslator.unavailableReason {
+                return "Apple Foundation Models is unavailable: \(unavailableReason)"
+            }
+            return "Apple Foundation Models (on-device)"
         }
         if provider == .openAICompatible {
             return "Configure base_url, api_key, and model in Settings"

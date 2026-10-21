@@ -266,6 +266,14 @@ private final class SettingsModel: ObservableObject {
             translationProvider = .plamo
             isPlamoStatusError = false
             plamoStatusMessage = "PLaMo is ready."
+        case .foundationModels:
+            guard FoundationModelsTranslator.isAvailable else { return }
+            TranslationPreferences.translationProvider = .foundationModels
+            translationProvider = .foundationModels
+            isPlamoStatusError = false
+            plamoStatusMessage = isPlamoReady
+                ? "PLaMo is ready."
+                : "PLaMo setup is not installed yet."
         case .openAICompatible:
             TranslationPreferences.translationProvider = .openAICompatible
             translationProvider = .openAICompatible
@@ -543,6 +551,11 @@ private struct SettingsView: View {
                     codexSection
                 }
 
+                if model.translationProvider == .foundationModels || !FoundationModelsTranslator.isAvailable {
+                    Divider()
+                    foundationModelsSection
+                }
+
                 if model.translationProvider == .openAICompatible {
                     Divider()
                     apiSection
@@ -641,7 +654,7 @@ private struct SettingsView: View {
                     ),
                     isPlamoReady: model.isPlamoReady,
                     isDisabled: model.isPreparingPlamo,
-                    width: 360
+                    width: 450
                 )
 
                 if model.isPreparingPlamo {
@@ -856,7 +869,7 @@ private struct SettingsView: View {
                 VStack(alignment: .leading, spacing: 4) {
                     Text("Prompt")
                         .font(.system(size: 14, weight: .semibold))
-                    Text("Used by Codex and API.")
+                    Text("Used by Codex, Claude, Apple Foundation Models, and API.")
                         .font(.system(size: 12))
                         .foregroundStyle(.secondary)
                     Text("PLaMo ignores shortcut prompt templates.")
@@ -1024,6 +1037,23 @@ private struct SettingsView: View {
                     .font(.system(size: 12))
                     .foregroundStyle(model.isCodexConfigImportError ? .red : .secondary)
                     .textSelection(.enabled)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+    }
+
+    private var foundationModelsSection: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text("Apple Foundation Models")
+                .font(.system(size: 14, weight: .semibold))
+            Text("Uses Apple's on-device language model. No CLI, API key, or separate model download is needed. Requires macOS 26 or later with Apple Intelligence turned on.")
+                .font(.system(size: 12))
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+            if let unavailableReason = FoundationModelsTranslator.unavailableReason {
+                Text("Unavailable: \(unavailableReason)")
+                    .font(.system(size: 12))
+                    .foregroundStyle(.red)
                     .fixedSize(horizontal: false, vertical: true)
             }
         }

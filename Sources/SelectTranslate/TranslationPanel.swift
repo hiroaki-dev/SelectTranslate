@@ -79,6 +79,10 @@ final class TranslationPanelModel: ObservableObject {
             message = "Prepare PLaMo in Settings before selecting it."
             return
         }
+        if provider == .foundationModels, let unavailableReason = FoundationModelsTranslator.unavailableReason {
+            message = unavailableReason
+            return
+        }
 
         translationProvider = provider
     }
@@ -927,7 +931,7 @@ private struct TranslationOverlayView: View {
                 ),
                 isPlamoReady: model.isPlamoReady,
                 isDisabled: isBusy,
-                width: 272
+                width: 340
             )
         }
     }

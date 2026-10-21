@@ -43,6 +43,7 @@ final class SettingsWindowController {
 private final class SettingsModel: ObservableObject {
     private var providerObserver: NSObjectProtocol?
     private var plamoSetupObserver: NSObjectProtocol?
+    private var foundationModelsObserver: NSObjectProtocol?
 
     @Published private(set) var shortcutProfiles: [ShortcutProfile]
     @Published var selectedShortcutID: String
@@ -99,6 +100,7 @@ private final class SettingsModel: ObservableObject {
     }
     @Published var isAPIKeyVisible: Bool = false
     @Published var isPlamoReady: Bool
+    @Published var foundationModelsAvailability: FoundationModelsAvailability
     @Published var isPreparingPlamo: Bool = false
     @Published var plamoStatusMessage: String
     @Published var plamoStatusLog: String = ""
@@ -131,6 +133,7 @@ private final class SettingsModel: ObservableObject {
         replyCorrectionPromptTemplate = PromptSettings.replyCorrectionTemplate
         let plamoReady = PlamoSetupService.isSetupComplete
         isPlamoReady = plamoReady
+        foundationModelsAvailability = FoundationModelsAvailabilityMonitor.shared.availability
         translationProvider = TranslationPreferences.translationProvider
         plamoStatusMessage = plamoReady
             ? "PLaMo is ready."
@@ -155,6 +158,16 @@ private final class SettingsModel: ObservableObject {
                 self?.refreshPlamoReadiness()
             }
         }
+        foundationModelsObserver = NotificationCenter.default.addObserver(
+            forName: .foundationModelsAvailabilityDidChange,
+            object: nil,
+            queue: .main
+        ) { [weak self] notification in
+            guard let availability = notification.object as? FoundationModelsAvailability else { return }
+            Task { @MainActor in
+                self?.foundationModelsAvailability = availability
+            }
+        }
     }
 
     deinit {
@@ -163,6 +176,9 @@ private final class SettingsModel: ObservableObject {
         }
         if let plamoSetupObserver {
             NotificationCenter.default.removeObserver(plamoSetupObserver)
+        }
+        if let foundationModelsObserver {
+            NotificationCenter.default.removeObserver(foundationModelsObserver)
         }
     }
 
@@ -267,7 +283,7 @@ private final class SettingsModel: ObservableObject {
             isPlamoStatusError = false
             plamoStatusMessage = "PLaMo is ready."
         case .foundationModels:
-            guard FoundationModelsTranslator.isAvailable else { return }
+            guard foundationModelsAvailability == .available else { return }
             TranslationPreferences.translationProvider = .foundationModels
             translationProvider = .foundationModels
             isPlamoStatusError = false
@@ -551,7 +567,7 @@ private struct SettingsView: View {
                     codexSection
                 }
 
-                if model.translationProvider == .foundationModels || !FoundationModelsTranslator.isAvailable {
+                if model.translationProvider == .foundationModels || model.foundationModelsAvailability != .available {
                     Divider()
                     foundationModelsSection
                 }
@@ -653,6 +669,7 @@ private struct SettingsView: View {
                         set: { model.selectProvider($0) }
                     ),
                     isPlamoReady: model.isPlamoReady,
+                    foundationModelsAvailability: model.foundationModelsAvailability,
                     isDisabled: model.isPreparingPlamo,
                     width: 450
                 )
@@ -1043,19 +1060,50 @@ private struct SettingsView: View {
     }
 
     private var foundationModelsSection: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text("Apple Foundation Models")
-                .font(.system(size: 14, weight: .semibold))
-            Text("Uses Apple's on-device language model. No CLI, API key, or separate model download is needed. Requires macOS 26 or later with Apple Intelligence turned on.")
-                .font(.system(size: 12))
-                .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
-            if let unavailableReason = FoundationModelsTranslator.unavailableReason {
-                Text("Unavailable: \(unavailableReason)")
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(alignment: .firstTextBaseline) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Apple Foundation Models")
+                        .font(.system(size: 14, weight: .semibold))
+                    Text("Uses Apple's on-device language model. No CLI or API key is needed. Requires macOS 26 or later with Apple Intelligence turned on. After you turn it on, macOS downloads the model and this engine becomes available automatically.")
+                        .font(.system(size: 12))
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+
+                Spacer()
+
+                if model.foundationModelsAvailability == .appleIntelligenceNotEnabled {
+                    Button("Open Apple Intelligence Settings") {
+                        FoundationModelsTranslator.openAppleIntelligenceSettings()
+                    }
+                    .help("Open System Settings > Apple Intelligence & Siri")
+                }
+            }
+
+            HStack(spacing: 6) {
+                if model.foundationModelsAvailability == .modelNotReady {
+                    ProgressView()
+                        .controlSize(.small)
+                }
+                Text(foundationModelsStatusMessage)
                     .font(.system(size: 12))
-                    .foregroundStyle(.red)
+                    .foregroundStyle(foundationModelsStatusColor)
                     .fixedSize(horizontal: false, vertical: true)
             }
+        }
+    }
+
+    private var foundationModelsStatusMessage: String {
+        model.foundationModelsAvailability.unavailableReason ?? "Apple Foundation Models is ready."
+    }
+
+    private var foundationModelsStatusColor: Color {
+        switch model.foundationModelsAvailability {
+        case .available, .modelNotReady:
+            return .secondary
+        default:
+            return .red
         }
     }
 

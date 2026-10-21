@@ -23,6 +23,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.regular)
+        FoundationModelsAvailabilityMonitor.shared.start()
         panelController.onReasoningEffortChanged = { [weak self] effort in
             guard let self else { return }
             self.startSourceRetranslation(effort: effort, provider: self.panelController.translationProvider)

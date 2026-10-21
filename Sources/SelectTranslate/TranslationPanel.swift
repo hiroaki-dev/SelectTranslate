@@ -6,6 +6,7 @@ import SwiftUI
 final class TranslationPanelModel: ObservableObject {
     private static let effortDefaultsKey = "reasoningEffort"
     private var plamoSetupObserver: NSObjectProtocol?
+    private var foundationModelsObserver: NSObjectProtocol?
 
     @Published var sourceText: String = ""
     @Published var translatedText: String = ""
@@ -34,6 +35,7 @@ final class TranslationPanelModel: ObservableObject {
     @Published var historySearchQuery: String = ""
     @Published var selectedHistoryID: Int64?
     @Published var isPlamoReady: Bool
+    @Published var foundationModelsAvailability: FoundationModelsAvailability
     @Published var currentDirection: TranslationDirection? = nil
     @Published var sourceLanguageSelection: SourceLanguageSelection = .automatic
     @Published var reasoningEffort: ReasoningEffort {
@@ -56,7 +58,18 @@ final class TranslationPanelModel: ObservableObject {
         let savedValue = UserDefaults.standard.string(forKey: Self.effortDefaultsKey)
         reasoningEffort = savedValue.flatMap(ReasoningEffort.init(rawValue:)) ?? .low
         isPlamoReady = PlamoSetupService.isSetupComplete
+        foundationModelsAvailability = FoundationModelsAvailabilityMonitor.shared.availability
         translationProvider = TranslationPreferences.translationProvider
+        foundationModelsObserver = NotificationCenter.default.addObserver(
+            forName: .foundationModelsAvailabilityDidChange,
+            object: nil,
+            queue: .main
+        ) { [weak self] notification in
+            guard let availability = notification.object as? FoundationModelsAvailability else { return }
+            Task { @MainActor in
+                self?.foundationModelsAvailability = availability
+            }
+        }
         plamoSetupObserver = NotificationCenter.default.addObserver(
             forName: .plamoSetupStatusDidChange,
             object: nil,
@@ -72,6 +85,9 @@ final class TranslationPanelModel: ObservableObject {
         if let plamoSetupObserver {
             NotificationCenter.default.removeObserver(plamoSetupObserver)
         }
+        if let foundationModelsObserver {
+            NotificationCenter.default.removeObserver(foundationModelsObserver)
+        }
     }
 
     func setProviderFromUserSelection(_ provider: TranslationProvider) {
@@ -79,7 +95,7 @@ final class TranslationPanelModel: ObservableObject {
             message = "Prepare PLaMo in Settings before selecting it."
             return
         }
-        if provider == .foundationModels, let unavailableReason = FoundationModelsTranslator.unavailableReason {
+        if provider == .foundationModels, let unavailableReason = foundationModelsAvailability.unavailableReason {
             message = unavailableReason
             return
         }
@@ -930,6 +946,7 @@ private struct TranslationOverlayView: View {
                     set: { model.setProviderFromUserSelection($0) }
                 ),
                 isPlamoReady: model.isPlamoReady,
+                foundationModelsAvailability: model.foundationModelsAvailability,
                 isDisabled: isBusy,
                 width: 340
             )

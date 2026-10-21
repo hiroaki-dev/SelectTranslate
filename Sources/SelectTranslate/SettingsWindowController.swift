@@ -43,6 +43,7 @@ final class SettingsWindowController {
 private final class SettingsModel: ObservableObject {
     private var providerObserver: NSObjectProtocol?
     private var plamoSetupObserver: NSObjectProtocol?
+    private var foundationModelsObserver: NSObjectProtocol?
 
     @Published private(set) var shortcutProfiles: [ShortcutProfile]
     @Published var selectedShortcutID: String
@@ -99,6 +100,7 @@ private final class SettingsModel: ObservableObject {
     }
     @Published var isAPIKeyVisible: Bool = false
     @Published var isPlamoReady: Bool
+    @Published var foundationModelsAvailability: FoundationModelsAvailability
     @Published var isPreparingPlamo: Bool = false
     @Published var plamoStatusMessage: String
     @Published var plamoStatusLog: String = ""
@@ -131,6 +133,7 @@ private final class SettingsModel: ObservableObject {
         replyCorrectionPromptTemplate = PromptSettings.replyCorrectionTemplate
         let plamoReady = PlamoSetupService.isSetupComplete
         isPlamoReady = plamoReady
+        foundationModelsAvailability = FoundationModelsAvailabilityMonitor.shared.availability
         translationProvider = TranslationPreferences.translationProvider
         plamoStatusMessage = plamoReady
             ? "PLaMo is ready."
@@ -155,6 +158,16 @@ private final class SettingsModel: ObservableObject {
                 self?.refreshPlamoReadiness()
             }
         }
+        foundationModelsObserver = NotificationCenter.default.addObserver(
+            forName: .foundationModelsAvailabilityDidChange,
+            object: nil,
+            queue: .main
+        ) { [weak self] notification in
+            guard let availability = notification.object as? FoundationModelsAvailability else { return }
+            Task { @MainActor in
+                self?.foundationModelsAvailability = availability
+            }
+        }
     }
 
     deinit {
@@ -163,6 +176,9 @@ private final class SettingsModel: ObservableObject {
         }
         if let plamoSetupObserver {
             NotificationCenter.default.removeObserver(plamoSetupObserver)
+        }
+        if let foundationModelsObserver {
+            NotificationCenter.default.removeObserver(foundationModelsObserver)
         }
     }
 
@@ -266,6 +282,14 @@ private final class SettingsModel: ObservableObject {
             translationProvider = .plamo
             isPlamoStatusError = false
             plamoStatusMessage = "PLaMo is ready."
+        case .foundationModels:
+            guard foundationModelsAvailability == .available else { return }
+            TranslationPreferences.translationProvider = .foundationModels
+            translationProvider = .foundationModels
+            isPlamoStatusError = false
+            plamoStatusMessage = isPlamoReady
+                ? "PLaMo is ready."
+                : "PLaMo setup is not installed yet."
         case .openAICompatible:
             TranslationPreferences.translationProvider = .openAICompatible
             translationProvider = .openAICompatible
@@ -543,6 +567,11 @@ private struct SettingsView: View {
                     codexSection
                 }
 
+                if model.translationProvider == .foundationModels {
+                    Divider()
+                    foundationModelsSection
+                }
+
                 if model.translationProvider == .openAICompatible {
                     Divider()
                     apiSection
@@ -640,8 +669,9 @@ private struct SettingsView: View {
                         set: { model.selectProvider($0) }
                     ),
                     isPlamoReady: model.isPlamoReady,
+                    foundationModelsAvailability: model.foundationModelsAvailability,
                     isDisabled: model.isPreparingPlamo,
-                    width: 360
+                    width: 420
                 )
 
                 if model.isPreparingPlamo {
@@ -651,11 +681,33 @@ private struct SettingsView: View {
 
                 Spacer()
 
-                if model.translationProvider == .plamo || !model.isPlamoReady {
-                    Button("Prepare PLaMo") {
-                        model.preparePlamo()
+                // Stacked so both setup actions fit when PLaMo and Apple Intelligence both need attention.
+                VStack(alignment: .trailing, spacing: 6) {
+                    if model.translationProvider == .plamo || !model.isPlamoReady {
+                        Button("Prepare PLaMo") {
+                            model.preparePlamo()
+                        }
+                        .disabled(model.isPreparingPlamo || model.isPlamoReady)
                     }
-                    .disabled(model.isPreparingPlamo || model.isPlamoReady)
+
+                    switch model.foundationModelsAvailability {
+                    case .appleIntelligenceNotEnabled:
+                        Button("Turn On Apple Intelligence") {
+                            FoundationModelsTranslator.openAppleIntelligenceSettings()
+                        }
+                        .help("Open System Settings > Apple Intelligence & Siri. Apps cannot turn it on themselves.")
+                    case .modelNotReady:
+                        HStack(spacing: 6) {
+                            ProgressView()
+                                .controlSize(.small)
+                            Text("Preparing Apple model…")
+                                .font(.system(size: 12))
+                                .foregroundStyle(.secondary)
+                        }
+                        .help("macOS is preparing the on-device model. The Apple engine becomes available when it is ready.")
+                    default:
+                        EmptyView()
+                    }
                 }
             }
 
@@ -856,7 +908,7 @@ private struct SettingsView: View {
                 VStack(alignment: .leading, spacing: 4) {
                     Text("Prompt")
                         .font(.system(size: 14, weight: .semibold))
-                    Text("Used by Codex and API.")
+                    Text("Used by Codex, Claude, Apple Foundation Models, and API.")
                         .font(.system(size: 12))
                         .foregroundStyle(.secondary)
                     Text("PLaMo ignores shortcut prompt templates.")
@@ -1026,6 +1078,43 @@ private struct SettingsView: View {
                     .textSelection(.enabled)
                     .fixedSize(horizontal: false, vertical: true)
             }
+        }
+    }
+
+    private var foundationModelsSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Apple Foundation Models")
+                    .font(.system(size: 14, weight: .semibold))
+                Text("Uses Apple's on-device language model. No CLI or API key is needed. Requires macOS 26 or later with Apple Intelligence turned on.")
+                    .font(.system(size: 12))
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            HStack(spacing: 6) {
+                if model.foundationModelsAvailability == .modelNotReady {
+                    ProgressView()
+                        .controlSize(.small)
+                }
+                Text(foundationModelsStatusMessage)
+                    .font(.system(size: 12))
+                    .foregroundStyle(foundationModelsStatusColor)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+    }
+
+    private var foundationModelsStatusMessage: String {
+        model.foundationModelsAvailability.unavailableReason ?? "Apple Foundation Models is ready."
+    }
+
+    private var foundationModelsStatusColor: Color {
+        switch model.foundationModelsAvailability {
+        case .available, .modelNotReady:
+            return .secondary
+        default:
+            return .red
         }
     }
 

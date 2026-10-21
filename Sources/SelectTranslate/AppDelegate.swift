@@ -23,6 +23,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.regular)
+        FoundationModelsAvailabilityMonitor.shared.start()
         panelController.onReasoningEffortChanged = { [weak self] effort in
             guard let self else { return }
             self.startSourceRetranslation(effort: effort, provider: self.panelController.translationProvider)
@@ -745,6 +746,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             return model.isEmpty ? "Claude" : "Claude: \(model)"
         case .plamo:
             return "PLaMo"
+        case .foundationModels:
+            return "Apple Foundation Models"
         case .openAICompatible:
             let model = OpenAICompatibleSettings.model
             return model.isEmpty ? "API" : "API: \(model)"
@@ -907,6 +910,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 source: currentTranslationRequest?.sourceText,
                 title: "PLaMo Not Ready",
                 message: "Prepare PLaMo in Settings before selecting it."
+            )
+            return
+        }
+
+        if provider == .foundationModels, let unavailableReason = FoundationModelsTranslator.unavailableReason {
+            panelController.showError(
+                source: currentTranslationRequest?.sourceText,
+                title: "Apple Foundation Models Unavailable",
+                message: unavailableReason
             )
             return
         }

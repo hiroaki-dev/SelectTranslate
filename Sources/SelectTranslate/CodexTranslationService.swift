@@ -180,6 +180,8 @@ struct ReplyTranslationContext {
 final class CodexTranslationService {
     private static let minimumPlamoMaxTokens = 1024
     private static let maximumPlamoMaxTokens = 8192
+    private static let translationSystemMessage = "You are a precise translation engine. Return only the translated text. Do not add explanations, alternatives, labels, quotes, or notes."
+    private static let replyCorrectionSystemMessage = "You are a writing coach for a language learner. Follow the requested output structure exactly."
 
     private let workspaceURL: URL
 
@@ -203,6 +205,12 @@ final class CodexTranslationService {
             return try await translatePromptWithClaude(prompt, effort: effort)
         case .plamo:
             return try await translateWithPlamo(text, onPartialResult: onPartialResult)
+        case .foundationModels:
+            return try await FoundationModelsTranslator.respond(
+                to: prompt,
+                instructions: Self.translationSystemMessage,
+                onPartialResult: onPartialResult
+            )
         case .openAICompatible:
             return try await translatePromptWithOpenAICompatibleAPI(prompt, onPartialResult: onPartialResult)
         }
@@ -231,6 +239,12 @@ final class CodexTranslationService {
             throw TranslationServiceError.invalidConfiguration(
                 provider: .plamo,
                 message: "Contextual reply is not available with PLaMo."
+            )
+        case .foundationModels:
+            return try await FoundationModelsTranslator.respond(
+                to: prompt,
+                instructions: Self.translationSystemMessage,
+                onPartialResult: onPartialResult
             )
         case .openAICompatible:
             return try await translatePromptWithOpenAICompatibleAPI(prompt, onPartialResult: onPartialResult)
@@ -263,10 +277,16 @@ final class CodexTranslationService {
                 provider: .plamo,
                 message: "Reply correction is not available with PLaMo."
             )
+        case .foundationModels:
+            return try await FoundationModelsTranslator.respond(
+                to: prompt,
+                instructions: Self.replyCorrectionSystemMessage,
+                onPartialResult: onPartialResult
+            )
         case .openAICompatible:
             return try await translatePromptWithOpenAICompatibleAPI(
                 prompt,
-                systemMessage: "You are a writing coach for a language learner. Follow the requested output structure exactly.",
+                systemMessage: Self.replyCorrectionSystemMessage,
                 onPartialResult: onPartialResult
             )
         }
@@ -600,7 +620,7 @@ final class CodexTranslationService {
 
     private func translatePromptWithOpenAICompatibleAPI(
         _ prompt: String,
-        systemMessage: String = "You are a precise translation engine. Return only the translated text. Do not add explanations, alternatives, labels, quotes, or notes.",
+        systemMessage: String = CodexTranslationService.translationSystemMessage,
         onPartialResult: @escaping TranslationProgressHandler
     ) async throws -> String {
         let configuration = OpenAICompatibleConfiguration.current()

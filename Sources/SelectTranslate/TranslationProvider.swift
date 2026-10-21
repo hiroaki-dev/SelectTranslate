@@ -4,6 +4,7 @@ enum TranslationProvider: String, CaseIterable, Identifiable, Hashable {
     case codex
     case claude
     case plamo
+    case foundationModels
     case openAICompatible
 
     var id: String { rawValue }
@@ -16,6 +17,9 @@ enum TranslationProvider: String, CaseIterable, Identifiable, Hashable {
             return "Claude"
         case .plamo:
             return "PLaMo"
+        case .foundationModels:
+            // "Foundation Models" does not fit in a panel segment.
+            return "Apple"
         case .openAICompatible:
             return "API"
         }
@@ -29,6 +33,8 @@ enum TranslationProvider: String, CaseIterable, Identifiable, Hashable {
             return "claude -p"
         case .plamo:
             return "PLaMo MLX"
+        case .foundationModels:
+            return "Apple Foundation Models"
         case .openAICompatible:
             return "OpenAI-compatible API"
         }

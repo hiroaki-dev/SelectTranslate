@@ -2,7 +2,7 @@
 
 [English](README.md) | 日本語
 
-選択したテキストを `codex exec`、`claude -p`、ローカルの PLaMo MLX、または OpenAI 互換の chat completions API で翻訳し、原文と訳文をフローティングパネルに表示する macOS ユーティリティアプリです。
+選択したテキストを `codex exec`、`claude -p`、ローカルの PLaMo MLX、Apple Foundation Models、または OpenAI 互換の chat completions API で翻訳し、原文と訳文をフローティングパネルに表示する macOS ユーティリティアプリです。
 
 ## 動作環境
 
@@ -11,6 +11,7 @@
 - Codex エンジンを使う場合: Codex CLI がインストール済みでログイン済みであること
 - Claude エンジンを使う場合: Claude CLI がインストール済みでログイン済みであること
 - ローカルの PLaMo を使う場合（任意）: Apple Silicon の Mac と Python 3
+- Apple Foundation Models を使う場合（任意）: Apple Intelligence に対応した Mac の macOS 26 以降で、Apple Intelligence がオンになっていること
 
 ## Mac アプリとしてビルドして起動する
 
@@ -51,9 +52,9 @@ swift run SelectTranslate
 
 アプリはまず、クリップボードに触れずにアクセシビリティ経由で選択テキストを読み取ります。アクセシビリティで選択テキストを公開していないアプリの場合は、現在のクリップボードを退避してから `Command + C` を送って選択テキストを取得し、翻訳を始める直前に元のクリップボードを復元します。
 
-パネルの `Engine` セグメントコントロール、または `SelectTranslate` > `Settings...` で、`Codex`、`Claude`、`PLaMo`、`API` を切り替えられます。PLaMo は、設定画面で `Prepare PLaMo` を完了するまで選択できません。翻訳結果が表示されている状態でエンジンを変えると、同じ原文で翻訳し直します。選択した値は保存されます。
+パネルの `Engine` セグメントコントロール、または `SelectTranslate` > `Settings...` で、`Codex`、`Claude`、`PLaMo`、`Apple`（Apple Foundation Models）、`API` を切り替えられます。PLaMo は、設定画面で `Prepare PLaMo` を完了するまで選択できません。`Apple` はオンデバイスのモデルが使えない間は選択できません。理由はボタンにカーソルを合わせるか、設定画面で確認できます。翻訳結果が表示されている状態でエンジンを変えると、同じ原文で翻訳し直します。選択した値は保存されます。
 
-PLaMo と API の翻訳は、生成中の途中結果を翻訳欄に逐次表示します。Codex と Claude の翻訳は、CLI が最終メッセージを返した時点で表示されます。
+PLaMo、Apple Foundation Models、API の翻訳は、生成中の途中結果を翻訳欄に逐次表示します。Codex と Claude の翻訳は、CLI が最終メッセージを返した時点で表示されます。
 
 パネルの `Effort` セグメントコントロールで、Codex または Claude の reasoning effort を選べます。これは Codex と Claude のエンジンでのみ表示されます。CLI での翻訳結果が表示されている状態で effort を変えると、同じ原文で翻訳し直します。選択した値は保存されます。
 
@@ -252,6 +253,14 @@ PLaMo エンジンを選ぶ前に、設定画面で `Prepare PLaMo` を実行し
 SelectTranslate は PLaMo の生成トークン上限を原文の長さから決めます。最小は 1024 トークン、最大は 8192 トークンです。これは、`mlx_lm generate` のデフォルトの上限では長い翻訳に足りないためです。
 
 PLaMo は翻訳に特化したモデルで、チャット向けの instruction tuning はされていません。そのため、アプリは選択テキストをそのまま送ります。ショートカットのプロンプトテンプレートは Codex と API では使われますが、PLaMo では無視されます。
+
+## Apple Foundation Models
+
+`Apple` エンジンは、[Foundation Models フレームワーク](https://developer.apple.com/documentation/foundationmodels)を通じて Apple のオンデバイスのシステム言語モデルを使います。インストールは不要で、API キーや別途のモデルのダウンロードも必要ありません。
+
+Apple Intelligence に対応した Mac の macOS 26 以降で、システム設定の Apple Intelligence がオンになっている必要があります。デバイスが対応していない場合、Apple Intelligence がオフの場合、モデルの準備ができていない場合（ダウンロード中など）は使えません。
+
+アプリは、現在のショートカットセットのプロンプトテンプレートを展開し、訳文だけを返すよう指示した新しい `LanguageModelSession` に送ります。返信の翻訳と返信の添削も同じエンジンで動きます。`Effort` の設定はこのエンジンには適用されません。
 
 ## OpenAI 互換 API
 

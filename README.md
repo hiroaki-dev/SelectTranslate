@@ -2,7 +2,7 @@
 
 English | [日本語](README.ja.md)
 
-macOS utility app that translates selected text with `codex exec`, `claude -p`, local PLaMo MLX, or an OpenAI-compatible chat completions API, and shows the source and translated text in a floating panel.
+macOS utility app that translates selected text with `codex exec`, `claude -p`, local PLaMo MLX, Apple Foundation Models, or an OpenAI-compatible chat completions API, and shows the source and translated text in a floating panel.
 
 ## Requirements
 
@@ -11,6 +11,7 @@ macOS utility app that translates selected text with `codex exec`, `claude -p`, 
 - Codex CLI installed and logged in for the Codex engine
 - Claude CLI installed and logged in for the Claude engine
 - Optional for local PLaMo: Apple Silicon Mac and Python 3
+- Optional for Apple Foundation Models: macOS 26 or later on a Mac that supports Apple Intelligence, with Apple Intelligence turned on
 
 ## Build and Launch as a Mac App
 
@@ -51,9 +52,9 @@ Japanese text is translated to English. Text without Japanese characters is tran
 
 The app first reads selected text through Accessibility without touching the clipboard. If an app does not expose selected text through Accessibility, SelectTranslate preserves the current clipboard, sends `Command + C`, captures the selected text, and restores the previous clipboard immediately before translation starts.
 
-Use the `Engine` segmented control in the panel or `SelectTranslate` > `Settings...` to switch between `Codex`, `Claude`, `PLaMo`, and `API`. PLaMo cannot be selected until `Prepare PLaMo` has completed in Settings. When a translation is already displayed, changing the engine reruns that same source text. The app saves the selected value.
+Use the `Engine` segmented control in the panel or `SelectTranslate` > `Settings...` to switch between `Codex`, `Claude`, `PLaMo`, `Apple` (Apple Foundation Models), and `API`. PLaMo cannot be selected until `Prepare PLaMo` has completed in Settings. `Apple` cannot be selected while the on-device model is unavailable; hover over it or open Settings to see why. When a translation is already displayed, changing the engine reruns that same source text. The app saves the selected value.
 
-PLaMo and API translations stream partial output into the translation pane while generation is running. Codex and Claude translations are shown when the CLI returns its final message.
+PLaMo, Apple Foundation Models, and API translations stream partial output into the translation pane while generation is running. Codex and Claude translations are shown when the CLI returns its final message.
 
 Use the `Effort` segmented control in the panel to choose the Codex or Claude reasoning effort. It is shown only for the Codex and Claude engines. When a CLI translation is already displayed, changing the effort reruns that same source text. The app saves the selected value.
 
@@ -252,6 +253,14 @@ After setup, the app runs:
 SelectTranslate sets the PLaMo generation limit from the source text length, with a minimum of 1024 tokens and a maximum of 8192 tokens. This avoids the `mlx_lm generate` default limit, which is too small for longer translations.
 
 PLaMo is a translation-specialized model and is not instruction-tuned for chat, so the app sends the selected text directly. Shortcut prompt templates are used by Codex and API, but ignored by PLaMo.
+
+## Apple Foundation Models
+
+The `Apple` engine uses Apple's on-device system language model through the [Foundation Models framework](https://developer.apple.com/documentation/foundationmodels). Nothing needs to be installed, and no API key or separate model download is required.
+
+It requires macOS 26 or later on a Mac that supports Apple Intelligence, with Apple Intelligence turned on in System Settings. The engine is unavailable when the device is not eligible, Apple Intelligence is turned off, or the model is not ready yet (for example, while it is still downloading).
+
+The app sends the active shortcut set's rendered prompt template to a new `LanguageModelSession`, with instructions to return only the translated text. Contextual reply and reply correction use the same engine. The `Effort` control does not apply to this engine.
 
 ## OpenAI-compatible API
 

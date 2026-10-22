@@ -58,6 +58,8 @@ PLaMo, Apple Foundation Models, and API translations stream partial output into 
 
 Use the `Effort` segmented control in the panel to choose the Codex or Claude reasoning effort. It is shown only for the Codex and Claude engines. When a CLI translation is already displayed, changing the effort reruns that same source text. The app saves the selected value.
 
+While a translation is running, the panel shows a stop button next to the engine control. Click it, or press `Command + .`, to stop the translation, including the underlying CLI process or API request. You can also change `Engine` or `Effort` while translating: the running translation stops and the same source text is translated again with the new selection.
+
 Use the retranslation button in the `Translation` header to translate the current translation back to the original language. The back translation appears at the bottom of the `Translation` area.
 
 Use `SelectTranslate` > `Settings...` to create multiple shortcut sets. Each set has a display name, global shortcut, and prompt template. The template supports `{{instruction}}` for the current translation direction and `{{text}}` for the selected text.

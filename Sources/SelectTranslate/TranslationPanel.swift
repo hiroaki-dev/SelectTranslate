@@ -260,6 +260,7 @@ final class TranslationPanelController {
     var onHistorySearchChanged: ((String) -> Void)?
     var onHistoryRefreshRequested: (() -> Void)?
     var onNewTranslationRequested: (() -> Void)?
+    var onStopRequested: (() -> Void)?
 
     var reasoningEffort: ReasoningEffort {
         model.reasoningEffort
@@ -563,6 +564,37 @@ final class TranslationPanelController {
         showPanel()
     }
 
+    /// Leaves whichever translation was running in a stopped, non-busy state.
+    func showTranslationStopped() {
+        if model.isLoading {
+            model.translatedText = ""
+            model.title = "Translation Stopped"
+            model.message = "The translation was stopped."
+            model.isLoading = false
+            model.isError = false
+            model.canBackTranslate = false
+        }
+        if model.isBackTranslating {
+            model.backTranslatedText = ""
+            model.backTranslationMessage = "The back translation was stopped."
+            model.isBackTranslating = false
+            model.isBackTranslationError = false
+        }
+        if model.isReplyTranslating {
+            model.translatedReplyText = ""
+            model.replyTranslationMessage = "The reply translation was stopped."
+            model.isReplyTranslating = false
+            model.isReplyTranslationError = false
+        }
+        if model.isReplyBackTranslating {
+            model.replyBackTranslatedText = ""
+            model.replyBackTranslationMessage = "The reply back translation was stopped."
+            model.isReplyBackTranslating = false
+            model.isReplyBackTranslationError = false
+        }
+        showPanel()
+    }
+
     func showReady(isAccessibilityTrusted: Bool, activates: Bool = true) {
         model.sourceText = ""
 
@@ -699,6 +731,9 @@ final class TranslationPanelController {
                 newTranslation: { [weak self] in
                     self?.onNewTranslationRequested?()
                 },
+                stop: { [weak self] in
+                    self?.onStopRequested?()
+                },
                 close: { [weak panel] in
                     panel?.close()
                 }
@@ -721,6 +756,7 @@ private struct TranslationOverlayView: View {
     let selectHistoryItem: (TranslationHistoryItem) -> Void
     let historySearchChanged: (String) -> Void
     let newTranslation: () -> Void
+    let stop: () -> Void
     let close: () -> Void
 
     var body: some View {
@@ -908,6 +944,20 @@ private struct TranslationOverlayView: View {
                     .controlSize(.small)
             }
 
+            // Icon-only so the header still fits the minimum panel width while translating.
+            if isBusy {
+                Button(action: stop) {
+                    Image(systemName: "stop.circle.fill")
+                        .font(.system(size: 18, weight: .semibold))
+                        .foregroundStyle(.red)
+                        .frame(width: 24, height: 24)
+                }
+                .buttonStyle(.plain)
+                .keyboardShortcut(".", modifiers: .command)
+                .help("Stop the running translation (Command-Period)")
+                .accessibilityLabel("Stop")
+            }
+
             Button(action: close) {
                 Image(systemName: "xmark")
                     .font(.system(size: 12, weight: .bold))
@@ -947,8 +997,8 @@ private struct TranslationOverlayView: View {
                 ),
                 isPlamoReady: model.isPlamoReady,
                 foundationModelsAvailability: model.foundationModelsAvailability,
-                isDisabled: isBusy,
-                width: 340
+                isDisabled: false,
+                width: 300
             )
         }
     }
@@ -969,10 +1019,7 @@ private struct TranslationOverlayView: View {
             .pickerStyle(.segmented)
             .labelsHidden()
             .frame(width: 250)
-            .disabled(
-                isBusy ||
-                    (model.translationProvider != .codex && model.translationProvider != .claude)
-            )
+            .disabled(model.translationProvider != .codex && model.translationProvider != .claude)
             .help("Reasoning effort passed to the selected CLI engine")
         }
     }

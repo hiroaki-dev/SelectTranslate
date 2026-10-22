@@ -26,7 +26,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         FoundationModelsAvailabilityMonitor.shared.start()
         panelController.onReasoningEffortChanged = { [weak self] effort in
             guard let self else { return }
-            self.startSourceRetranslation(effort: effort, provider: self.panelController.translationProvider)
+            self.startSourceRetranslation(
+                effort: effort,
+                provider: self.panelController.translationProvider,
+                cancelsActiveTask: true
+            )
         }
         panelController.onTranslationProviderChanged = { [weak self] provider in
             self?.startProviderChange(provider)
@@ -62,6 +66,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         panelController.onNewTranslationRequested = { [weak self] in
             self?.showNewTranslation()
+        }
+        panelController.onStopRequested = { [weak self] in
+            self?.stopTranslation()
         }
         refreshHistoryItems()
         configureApplicationMenu()
@@ -222,6 +229,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         translationTaskGeneration == generation
     }
 
+    private func stopTranslation() {
+        guard translationTask != nil else { return }
+
+        cancelActiveTranslationTask()
+        panelController.showTranslationStopped()
+    }
+
     private func startTranslation(
         shortcutProfile: ShortcutProfile,
         cancelPendingAccessibilityRetry: Bool = true,
@@ -324,7 +338,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func startProviderChange(_ provider: TranslationProvider) {
-        guard translationTask == nil else { return }
+        if translationTask != nil {
+            cancelActiveTranslationTask()
+        }
 
         let taskGeneration = nextTranslationTaskGeneration()
         translationTask = Task { [weak self] in
@@ -345,7 +361,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             await self.backTranslate(
                 result: result,
                 effort: self.panelController.reasoningEffort,
-                provider: self.panelController.translationProvider
+                provider: self.panelController.translationProvider,
+                taskGeneration: taskGeneration
             )
         }
     }
@@ -382,7 +399,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 result: result,
                 effort: self.panelController.reasoningEffort,
                 provider: self.panelController.translationProvider,
-                replyMode: replyMode
+                replyMode: replyMode,
+                taskGeneration: taskGeneration
             )
         }
     }
@@ -410,7 +428,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 translatedReply: translatedReply,
                 result: result,
                 effort: self.panelController.reasoningEffort,
-                provider: self.panelController.translationProvider
+                provider: self.panelController.translationProvider,
+                taskGeneration: taskGeneration
             )
         }
     }
@@ -425,6 +444,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             let sourceText = try await selectionReader.readSelectedText(
                 preferredProcessIdentifier: preferredProcessIdentifier
             )
+            guard isActiveTranslationTask(generation: taskGeneration) else { return }
             let request = TranslationRequest(
                 sourceText: sourceText,
                 sourceLanguageSelection: .automatic,
@@ -439,6 +459,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 taskGeneration: taskGeneration
             )
         } catch SelectionReaderError.accessibilityPermissionRequired {
+            guard isActiveTranslationTask(generation: taskGeneration) else { return }
             currentTranslationRequest = nil
             currentTranslationResult = nil
             panelController.cancelActivationOnNextShow()
@@ -454,6 +475,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             )
             requestAccessibilityPermissionFromShortcutIfNeeded()
         } catch SelectionReaderError.noSelectedText {
+            guard isActiveTranslationTask(generation: taskGeneration) else { return }
             currentTranslationRequest = nil
             currentTranslationResult = nil
             if isAccessibilityRetry {
@@ -470,6 +492,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 )
             }
         } catch {
+            guard isActiveTranslationTask(generation: taskGeneration) else { return }
             panelController.showError(
                 source: nil,
                 title: "Translation Failed",
@@ -754,7 +777,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
-    private func backTranslate(result: TranslationResult, effort: ReasoningEffort, provider: TranslationProvider) async {
+    private func backTranslate(
+        result: TranslationResult,
+        effort: ReasoningEffort,
+        provider: TranslationProvider,
+        taskGeneration: Int
+    ) async {
         if showCachedBackTranslationIfAvailable(result: result, effort: effort, provider: provider) {
             return
         }
@@ -769,12 +797,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 provider: provider,
                 promptTemplate: result.shortcutProfile.normalizedPromptTemplate,
                 onPartialResult: { [weak self] partialText in
-                    self?.panelController.showStreamingBackTranslation(partialText)
+                    guard let self, self.isActiveTranslationTask(generation: taskGeneration) else { return }
+                    self.panelController.showStreamingBackTranslation(partialText)
                 }
             )
+            guard isActiveTranslationTask(generation: taskGeneration) else { return }
             translationCache[cacheKey] = backTranslatedText
             panelController.showBackTranslationResult(backTranslatedText)
         } catch {
+            guard isActiveTranslationTask(generation: taskGeneration) else { return }
             panelController.showBackTranslationError(error.localizedDescription)
         }
     }
@@ -785,7 +816,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         result: TranslationResult,
         effort: ReasoningEffort,
         provider: TranslationProvider,
-        replyMode: ReplyWorkflowMode
+        replyMode: ReplyWorkflowMode,
+        taskGeneration: Int
     ) async {
         do {
             let context = ReplyTranslationContext(
@@ -803,7 +835,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     effort: effort,
                     provider: provider,
                     onPartialResult: { [weak self] partialText in
-                        self?.panelController.showStreamingReplyTranslation(partialText)
+                        guard let self, self.isActiveTranslationTask(generation: taskGeneration) else { return }
+                        self.panelController.showStreamingReplyTranslation(partialText)
                     }
                 )
             case .correction:
@@ -815,10 +848,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     effort: effort,
                     provider: provider,
                     onPartialResult: { [weak self] partialText in
-                        self?.panelController.showStreamingReplyTranslation(partialText)
+                        guard let self, self.isActiveTranslationTask(generation: taskGeneration) else { return }
+                        self.panelController.showStreamingReplyTranslation(partialText)
                     }
                 )
             }
+            guard isActiveTranslationTask(generation: taskGeneration) else { return }
             panelController.showReplyTranslationResult(translatedReply)
             if let currentHistoryItemID,
                let updatedItem = historyStore.updateReply(
@@ -831,6 +866,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 panelController.updateHistoryItem(updatedItem)
             }
         } catch {
+            guard isActiveTranslationTask(generation: taskGeneration) else { return }
             panelController.showReplyTranslationError(error.localizedDescription)
         }
     }
@@ -839,7 +875,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         translatedReply: String,
         result: TranslationResult,
         effort: ReasoningEffort,
-        provider: TranslationProvider
+        provider: TranslationProvider,
+        taskGeneration: Int
     ) async {
         do {
             panelController.showReplyBackTranslationLoading(targetLanguage: result.direction.targetLanguage)
@@ -850,11 +887,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 provider: provider,
                 promptTemplate: result.shortcutProfile.normalizedPromptTemplate,
                 onPartialResult: { [weak self] partialText in
-                    self?.panelController.showStreamingReplyBackTranslation(partialText)
+                    guard let self, self.isActiveTranslationTask(generation: taskGeneration) else { return }
+                    self.panelController.showStreamingReplyBackTranslation(partialText)
                 }
             )
+            guard isActiveTranslationTask(generation: taskGeneration) else { return }
             panelController.showReplyBackTranslationResult(backTranslatedReply)
         } catch {
+            guard isActiveTranslationTask(generation: taskGeneration) else { return }
             panelController.showReplyBackTranslationError(error.localizedDescription)
         }
     }

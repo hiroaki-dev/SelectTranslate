@@ -26,7 +26,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         FoundationModelsAvailabilityMonitor.shared.start()
         panelController.onReasoningEffortChanged = { [weak self] effort in
             guard let self else { return }
-            self.startSourceRetranslation(effort: effort, provider: self.panelController.translationProvider)
+            self.startSourceRetranslation(
+                effort: effort,
+                provider: self.panelController.translationProvider,
+                cancelsActiveTask: true
+            )
         }
         panelController.onTranslationProviderChanged = { [weak self] provider in
             self?.startProviderChange(provider)
@@ -62,6 +66,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         panelController.onNewTranslationRequested = { [weak self] in
             self?.showNewTranslation()
+        }
+        panelController.onStopRequested = { [weak self] in
+            self?.stopTranslation()
         }
         refreshHistoryItems()
         configureApplicationMenu()
@@ -222,6 +229,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         translationTaskGeneration == generation
     }
 
+    private func stopTranslation() {
+        guard translationTask != nil else { return }
+
+        cancelActiveTranslationTask()
+        panelController.showTranslationStopped()
+    }
+
     private func startTranslation(
         shortcutProfile: ShortcutProfile,
         cancelPendingAccessibilityRetry: Bool = true,
@@ -324,7 +338,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func startProviderChange(_ provider: TranslationProvider) {
-        guard translationTask == nil else { return }
+        if translationTask != nil {
+            cancelActiveTranslationTask()
+        }
 
         let taskGeneration = nextTranslationTaskGeneration()
         translationTask = Task { [weak self] in

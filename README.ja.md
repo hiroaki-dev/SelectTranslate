@@ -52,11 +52,13 @@ swift run SelectTranslate
 
 アプリはまず、クリップボードに触れずにアクセシビリティ経由で選択テキストを読み取ります。アクセシビリティで選択テキストを公開していないアプリの場合は、現在のクリップボードを退避してから `Command + C` を送って選択テキストを取得し、翻訳を始める直前に元のクリップボードを復元します。
 
-パネルの `Engine` セグメントコントロール、または `SelectTranslate` > `Settings...` で、`Codex`、`Claude`、`PLaMo`、`Apple`（Apple Foundation Models）、`API` を切り替えられます。PLaMo は、設定画面で `Prepare PLaMo` を完了するまで選択できません。`Apple` はオンデバイスのモデルが使えない間は選択できません。理由はボタンにカーソルを合わせるか、設定画面で確認できます。翻訳結果が表示されている状態でエンジンを変えると、同じ原文で翻訳し直します。選択した値は保存されます。
+パネルの `Engine` セグメントコントロール、または `SelectTranslate` > `Settings...` で、`Codex`、`Claude`、`PLaMo`、`Apple`（Apple Foundation Models）、`API` を切り替えられます。パネルでは、設定画面で PLaMo 3 のモデルを 1 つ以上ダウンロードするまで PLaMo を選択できません。`Apple` はオンデバイスのモデルが使えない間は選択できません。理由はボタンにカーソルを合わせるか、設定画面で確認できます。翻訳結果が表示されている状態でエンジンを変えると、同じ原文で翻訳し直します。選択した値は保存されます。
 
 PLaMo、Apple Foundation Models、API の翻訳は、生成中の途中結果を翻訳欄に逐次表示します。Codex と Claude の翻訳は、CLI が最終メッセージを返した時点で表示されます。
 
 パネルの `Effort` セグメントコントロールで、Codex または Claude の reasoning effort を選べます。これは Codex と Claude のエンジンでのみ表示されます。CLI での翻訳結果が表示されている状態で effort を変えると、同じ原文で翻訳し直します。選択した値は保存されます。
+
+PLaMo エンジンでは、同じ位置に PLaMo 3 のサイズを選ぶ `Model` セグメントコントロールが表示されます。詳しくは [PLaMo コマンド](#plamo-コマンド) を参照してください。
 
 翻訳の実行中は、パネルのエンジン選択の横に停止ボタンが表示されます。クリックするか `Command + .` を押すと、裏で動いている CLI のプロセスや API リクエストも含めて翻訳を止められます。翻訳中に `Engine` や `Effort` を変えることもできます。その場合は実行中の翻訳を止めて、新しく選んだ設定で同じ原文を翻訳し直します。
 
@@ -226,35 +228,57 @@ claude -p --safe-mode --no-session-persistence --output-format text --effort <ef
 
 ## PLaMo コマンド
 
-PLaMo エンジンは [`mlx-community/plamo-2-translate`](https://huggingface.co/mlx-community/plamo-2-translate) を使います。これは Apple Silicon 上の MLX 向けに 4bit 量子化された PLaMo 翻訳モデルです。使用前にモデルカードと PLaMo コミュニティライセンスを確認してください。
+PLaMo エンジンは、Preferred Networks の PLaMo 3 Translate を使います。Apple Silicon 向けの公式 MLX 4bit 版です。4 つのサイズから選んでダウンロードでき、複数のサイズを同時に保持できます。
+
+| サイズ | モデル | ダウンロード容量 |
+| --- | --- | ---: |
+| 0.8B | [`pfnet/plamo-3-translate-0.8b-MLX-4bit`](https://huggingface.co/pfnet/plamo-3-translate-0.8b-MLX-4bit) | 約 1.0 GB |
+| 2B（推奨） | [`pfnet/plamo-3-translate-2b-MLX-4bit`](https://huggingface.co/pfnet/plamo-3-translate-2b-MLX-4bit) | 約 2.4 GB |
+| 8B | [`pfnet/plamo-3-translate-8b-MLX-4bit`](https://huggingface.co/pfnet/plamo-3-translate-8b-MLX-4bit) | 約 6.1 GB |
+| 31B | [`pfnet/plamo-3-translate-31b-MLX-4bit`](https://huggingface.co/pfnet/plamo-3-translate-31b-MLX-4bit) | 約 18.7 GB |
+
+大きいモデルほど翻訳の品質は上がりますが、必要なメモリと時間も増えます。使用前にモデルカードと PLaMo コミュニティライセンスを確認してください。
 
 Built with PLaMo.
 
-PLaMo のモデルは、このリポジトリにも `./scripts/build-app.sh` で作られるアプリにも同梱されていません。`Prepare PLaMo` を実行すると、アプリがローカルの Application Support ディレクトリにモデルをダウンロードします。PLaMo のモデルには SelectTranslate の Apache License 2.0 ではなく、PLaMo コミュニティライセンスが適用されます。商用利用には、Preferred Networks が定める追加の手続きが必要になる場合があります。
+PLaMo のモデルは、このリポジトリにも `./scripts/build-app.sh` で作られるアプリにも同梱されていません。設定画面でサイズを選んでダウンロードすると、アプリがローカルの Application Support ディレクトリにモデルをダウンロードします。PLaMo のモデルには SelectTranslate の Apache License 2.0 ではなく、PLaMo コミュニティライセンスが適用されます。商用利用には、Preferred Networks が定める追加の手続きが必要になる場合があります。
 
-PLaMo エンジンを選ぶ前に、設定画面で `Prepare PLaMo` を実行してください。SelectTranslate はアプリ専用の Python 環境を作成し、`mlx-lm`、`numba`、`torch` をインストールして、モデルをダウンロードします。設定画面には、実行中のセットアップ手順とコマンドの出力（各ツールが報告するダウンロードの進捗を含む）がリアルタイムで表示されます。ファイルは次の場所に保存されます:
+`SelectTranslate` > `Settings...` > `Model` を開きます。`Engine` で `PLaMo` を選びます。設定画面ではモデルが入っていなくても選べて、PLaMo 3 の欄に 4 つのサイズが並びます。モデルが入るまでの翻訳には、それまでのエンジンを使います。使いたいサイズの `Download` を押します。最初のダウンロードでは、アプリ専用の Python 環境を作成し、`mlx-lm`、`mlx`、`transformers`、`numba` をインストールします。設定画面には、実行中のセットアップ手順とコマンドの出力（各ツールが報告するダウンロードの進捗を含む）がリアルタイムで表示されます。インストール済みのサイズには `Use` と `Delete…` のボタンがあります。`Use` で翻訳に使うサイズを選び、`Delete…` でそのサイズのファイルを削除します。少なくとも 1 つのサイズをインストールすると、PLaMo で翻訳できるようになります。
+
+エンジンが `PLaMo` のときは、Codex と Claude で `Effort` が表示される位置に、翻訳パネルの `Model` セグメントコントロール（`0.8B`、`2B`、`8B`、`31B`）が表示されます。ダウンロードしていないサイズは選べません。サイズを変えると、実行中の翻訳を止めて、同じ原文を新しいサイズで翻訳し直します。選択したサイズは保存されます。
+
+設定画面の PLaMo 3 の欄には、次の設定もあります。
+
+- `Japanese style`: `Auto` はモデルに任せます。`Polite` はです・ます調、`Plain` はだ・である調で訳します。日本語に翻訳するときだけ使われます。
+- `Glossary`: PLaMo に必ず使わせる英語と日本語の用語のペアです。1 つのペアを両方向で使います。英語 -> 日本語では英語の用語を、日本語 -> 英語では日本語の用語を原文側として扱います。原文に含まれる用語だけを送り、英語の用語は大文字と小文字を区別せずに探します。
+
+PLaMo 3 より前のバージョンは `mlx-community/plamo-2-translate` を使っていました。アップデート後は、PLaMo 3 のサイズをダウンロードするまで PLaMo は使えません。既存の Python 環境はそのまま使います。古い PLaMo 2 のモデルが残っている場合は、設定画面の `Delete PLaMo 2 Model…` ボタンで削除して空き容量を増やせます。
+
+ファイルは次の場所に保存されます:
 
 ```sh
 ~/Library/Application Support/SelectTranslate/
 ```
 
-旧名の CodexTranslator からアップグレードした場合、新しいディレクトリがまだなければ、既存の `~/Library/Application Support/CodexTranslator/` を `~/Library/Application Support/SelectTranslate/` に移動します。
+旧名の CodexTranslator から移行する場合、新しいディレクトリがまだなければ、既存の `~/Library/Application Support/CodexTranslator/` を `~/Library/Application Support/SelectTranslate/` に移動します。
 
-手動でセットアップする場合は、次を実行します:
+手動でセットアップする場合は、次を実行します。サイズには `0.8b`、`2b`、`8b`、`31b` のいずれかを指定でき、省略すると `2b` になります:
 
 ```sh
-./scripts/install-plamo-deps.sh
+./scripts/install-plamo-deps.sh 2b
 ```
 
 セットアップ後、アプリは次のコマンドを実行します:
 
 ```sh
-~/Library/Application\ Support/SelectTranslate/PLaMoEnvironment/bin/python3 -m mlx_lm generate --model mlx-community/plamo-2-translate --trust-remote-code --extra-eos-token '<|plamo:op|>' --max-tokens <dynamic limit> --prompt '<selected text>'
+~/Library/Application\ Support/SelectTranslate/PLaMoEnvironment/bin/python3 -m mlx_lm generate --model <ダウンロードしたモデルのディレクトリ> --trust-remote-code --ignore-chat-template --temp 0 --max-tokens <dynamic limit> --prompt '<PFML3 プロンプト>'
 ```
+
+プロンプトは PLaMo の PFML3 形式です。翻訳方向から訳文の言語を指定し、該当する場合は日本語の文体と、原文に含まれる用語を加えます。原文の言語は指定せず、PLaMo に判定させます。`<|plamo:tag|>` などの PFML の予約トークンは、選択テキストと用語集から取り除きます。
 
 SelectTranslate は PLaMo の生成トークン上限を原文の長さから決めます。最小は 1024 トークン、最大は 8192 トークンです。これは、`mlx_lm generate` のデフォルトの上限では長い翻訳に足りないためです。
 
-PLaMo は翻訳に特化したモデルで、チャット向けの instruction tuning はされていません。そのため、アプリは選択テキストをそのまま送ります。ショートカットのプロンプトテンプレートは Codex と API では使われますが、PLaMo では無視されます。
+PLaMo は翻訳に特化したモデルで、チャット向けの instruction tuning はされていません。ショートカットのプロンプトテンプレートは Codex と API では使われますが、PLaMo では無視されます。
 
 ## Apple Foundation Models
 
@@ -262,7 +286,7 @@ PLaMo は翻訳に特化したモデルで、チャット向けの instruction t
 
 Apple Intelligence に対応した Mac の macOS 26 以降で、システム設定の Apple Intelligence がオンになっている必要があります。デバイスが対応していない場合、Apple Intelligence がオフの場合、モデルの準備ができていない場合（ダウンロード中など）は使えません。
 
-アプリから Apple Intelligence をオンにしたり、モデルのダウンロードを始めたりすることはできません。Apple Intelligence がオフの間は、`SelectTranslate` > `Settings...` > `Model` の `Engine` の横に、`Prepare PLaMo` と同じように `Turn On Apple Intelligence` ボタンが表示されます。押すと システム設定 > Apple Intelligence と Siri が開きます。オンにすると、macOS がモデルをダウンロードします。SelectTranslate は、アプリがアクティブになったときと、待っている間は数秒ごとにモデルが使えるかを確認するので、アプリを再起動しなくても `Apple` エンジンを選べるようになります。
+アプリから Apple Intelligence をオンにしたり、モデルのダウンロードを始めたりすることはできません。Apple Intelligence がオフの間は、`SelectTranslate` > `Settings...` > `Model` の `Engine` の横に、`Turn On Apple Intelligence` ボタンが表示されます。押すと システム設定 > Apple Intelligence と Siri が開きます。オンにすると、macOS がモデルをダウンロードします。SelectTranslate は、アプリがアクティブになったときと、待っている間は数秒ごとにモデルが使えるかを確認するので、アプリを再起動しなくても `Apple` エンジンを選べるようになります。
 
 アプリは、現在のショートカットセットのプロンプトテンプレートを展開し、訳文だけを返すよう指示した新しい `LanguageModelSession` に送ります。返信の翻訳と返信の添削も同じエンジンで動きます。`Effort` の設定はこのエンジンには適用されません。
 

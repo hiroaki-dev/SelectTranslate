@@ -32,7 +32,7 @@ enum TranslationProvider: String, CaseIterable, Identifiable, Hashable {
         case .claude:
             return "claude -p"
         case .plamo:
-            return "PLaMo MLX"
+            return "PLaMo 3 MLX"
         case .foundationModels:
             return "Apple Foundation Models"
         case .openAICompatible:

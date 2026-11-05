@@ -52,11 +52,13 @@ Japanese text is translated to English. Text without Japanese characters is tran
 
 The app first reads selected text through Accessibility without touching the clipboard. If an app does not expose selected text through Accessibility, SelectTranslate preserves the current clipboard, sends `Command + C`, captures the selected text, and restores the previous clipboard immediately before translation starts.
 
-Use the `Engine` segmented control in the panel or `SelectTranslate` > `Settings...` to switch between `Codex`, `Claude`, `PLaMo`, `Apple` (Apple Foundation Models), and `API`. PLaMo cannot be selected until `Prepare PLaMo` has completed in Settings. `Apple` cannot be selected while the on-device model is unavailable; hover over it or open Settings to see why. When a translation is already displayed, changing the engine reruns that same source text. The app saves the selected value.
+Use the `Engine` segmented control in the panel or `SelectTranslate` > `Settings...` to switch between `Codex`, `Claude`, `PLaMo`, `Apple` (Apple Foundation Models), and `API`. In the panel, PLaMo cannot be selected until at least one PLaMo 3 model has been downloaded in Settings. `Apple` cannot be selected while the on-device model is unavailable; hover over it or open Settings to see why. When a translation is already displayed, changing the engine reruns that same source text. The app saves the selected value.
 
 PLaMo, Apple Foundation Models, and API translations stream partial output into the translation pane while generation is running. Codex and Claude translations are shown when the CLI returns its final message.
 
 Use the `Effort` segmented control in the panel to choose the Codex or Claude reasoning effort. It is shown only for the Codex and Claude engines. When a CLI translation is already displayed, changing the effort reruns that same source text. The app saves the selected value.
+
+For the PLaMo engine, the same row shows a `Model` segmented control for choosing the PLaMo 3 size instead. See [PLaMo command](#plamo-command).
 
 While a translation is running, the panel shows a stop button next to the engine control. Click it, or press `Command + .`, to stop the translation, including the underlying CLI process or API request. You can also change `Engine` or `Effort` while translating: the running translation stops and the same source text is translated again with the new selection.
 
@@ -226,13 +228,33 @@ The active shortcut set's prompt template is rendered and sent to `claude -p` ov
 
 ## PLaMo command
 
-The PLaMo engine uses [`mlx-community/plamo-2-translate`](https://huggingface.co/mlx-community/plamo-2-translate), a 4-bit quantized PLaMo Translation Model for MLX on Apple Silicon. Review the model card and PLaMo community license before use.
+The PLaMo engine uses PLaMo 3 Translate by Preferred Networks, through the official MLX 4-bit builds for Apple Silicon. You can download any of the four sizes and keep several of them:
+
+| Size | Model | Download |
+| --- | --- | ---: |
+| 0.8B | [`pfnet/plamo-3-translate-0.8b-MLX-4bit`](https://huggingface.co/pfnet/plamo-3-translate-0.8b-MLX-4bit) | about 1.0 GB |
+| 2B (recommended) | [`pfnet/plamo-3-translate-2b-MLX-4bit`](https://huggingface.co/pfnet/plamo-3-translate-2b-MLX-4bit) | about 2.4 GB |
+| 8B | [`pfnet/plamo-3-translate-8b-MLX-4bit`](https://huggingface.co/pfnet/plamo-3-translate-8b-MLX-4bit) | about 6.1 GB |
+| 31B | [`pfnet/plamo-3-translate-31b-MLX-4bit`](https://huggingface.co/pfnet/plamo-3-translate-31b-MLX-4bit) | about 18.7 GB |
+
+Larger models translate better but need more memory and time. Review the model card and the PLaMo Community License before use.
 
 Built with PLaMo.
 
-The PLaMo model is not bundled with this repository or the app bundle created by `./scripts/build-app.sh`. When you run `Prepare PLaMo`, the app downloads the model into your local Application Support directory. The PLaMo model is governed by the PLaMo community license, not by SelectTranslate's Apache License 2.0. Commercial use may require additional steps described by Preferred Networks.
+The PLaMo models are not bundled with this repository or the app bundle created by `./scripts/build-app.sh`. When you download a size in Settings, the app downloads the model into your local Application Support directory. The PLaMo models are governed by the PLaMo Community License, not by SelectTranslate's Apache License 2.0. Commercial use may require additional steps described by Preferred Networks.
 
-Run `Prepare PLaMo` in Settings before selecting the PLaMo engine. SelectTranslate creates an app-local Python environment, installs `mlx-lm`, `numba`, and `torch`, and downloads the model. Settings shows the active setup step and live command output, including download progress reported by the underlying tools. The files are stored under:
+Open `SelectTranslate` > `Settings...` > `Model`. Select `PLaMo` in the `Engine` control. It can be selected in Settings before any model is installed, and the PLaMo 3 section then lists the four sizes. Until a model is installed, translations keep using the previous engine. Press `Download` for each size you want. The first download creates an app-local Python environment and installs `mlx-lm`, `mlx`, `transformers`, and `numba`. Settings shows the active setup step and live command output, including download progress reported by the underlying tools. Installed sizes have `Use` and `Delete…` buttons. `Use` chooses the size for translations, and `Delete…` removes its files. PLaMo translates once at least one size is installed.
+
+When the engine is `PLaMo`, the translation panel shows a `Model` segmented control (`0.8B`, `2B`, `8B`, `31B`) where the `Effort` control is shown for Codex and Claude. Sizes that are not downloaded are disabled. Changing the size stops a running translation and translates the same source text again with the new size. The app saves the selected size.
+
+The PLaMo 3 section in Settings also has these options:
+
+- `Japanese style`: `Auto` lets the model choose. `Polite` uses です・ます調 and `Plain` uses だ・である調. The style applies only when translating into Japanese.
+- `Glossary`: English and Japanese term pairs that PLaMo must use. Each pair works in both directions. For English -> Japanese, the English term is the source. For Japanese -> English, the Japanese term is the source. Only the terms found in the original text are sent, and English terms match regardless of case.
+
+Versions before PLaMo 3 used `mlx-community/plamo-2-translate`. After upgrading, PLaMo stays unavailable until you download a PLaMo 3 size. The existing Python environment is reused. If the old PLaMo 2 model is still on disk, Settings shows a `Delete PLaMo 2 Model…` button to free the space.
+
+The files are stored under:
 
 ```sh
 ~/Library/Application Support/SelectTranslate/
@@ -240,21 +262,23 @@ Run `Prepare PLaMo` in Settings before selecting the PLaMo engine. SelectTransla
 
 When upgrading from the old CodexTranslator name, the app moves the existing `~/Library/Application Support/CodexTranslator/` directory to `~/Library/Application Support/SelectTranslate/` if the new directory does not already exist.
 
-For manual setup, you can run:
+For manual setup, you can run the following. The size can be `0.8b`, `2b`, `8b`, or `31b`, and defaults to `2b`:
 
 ```sh
-./scripts/install-plamo-deps.sh
+./scripts/install-plamo-deps.sh 2b
 ```
 
 After setup, the app runs:
 
 ```sh
-~/Library/Application\ Support/SelectTranslate/PLaMoEnvironment/bin/python3 -m mlx_lm generate --model mlx-community/plamo-2-translate --trust-remote-code --extra-eos-token '<|plamo:op|>' --max-tokens <dynamic limit> --prompt '<selected text>'
+~/Library/Application\ Support/SelectTranslate/PLaMoEnvironment/bin/python3 -m mlx_lm generate --model <downloaded model directory> --trust-remote-code --ignore-chat-template --temp 0 --max-tokens <dynamic limit> --prompt '<PFML3 prompt>'
 ```
+
+The prompt uses PLaMo's PFML3 format. It sets the target language from the translation direction, and adds the Japanese style and the matching glossary terms when they apply. The source language is left out so that PLaMo detects it. PFML reserved tokens such as `<|plamo:tag|>` are removed from the selected text and the glossary.
 
 SelectTranslate sets the PLaMo generation limit from the source text length, with a minimum of 1024 tokens and a maximum of 8192 tokens. This avoids the `mlx_lm generate` default limit, which is too small for longer translations.
 
-PLaMo is a translation-specialized model and is not instruction-tuned for chat, so the app sends the selected text directly. Shortcut prompt templates are used by Codex and API, but ignored by PLaMo.
+PLaMo is a translation-specialized model and is not instruction-tuned for chat. Shortcut prompt templates are used by Codex and API, but ignored by PLaMo.
 
 ## Apple Foundation Models
 
@@ -262,7 +286,7 @@ The `Apple` engine uses Apple's on-device system language model through the [Fou
 
 It requires macOS 26 or later on a Mac that supports Apple Intelligence, with Apple Intelligence turned on in System Settings. The engine is unavailable when the device is not eligible, Apple Intelligence is turned off, or the model is not ready yet (for example, while it is still downloading).
 
-Apps cannot turn on Apple Intelligence or start the model download themselves. While Apple Intelligence is off, `SelectTranslate` > `Settings...` > `Model` shows `Turn On Apple Intelligence` next to the `Engine` control, like `Prepare PLaMo`. It opens System Settings > Apple Intelligence & Siri. After you turn it on, macOS downloads the model. SelectTranslate checks the model's availability whenever the app becomes active and every few seconds while it is waiting, so the `Apple` engine becomes selectable without restarting the app.
+Apps cannot turn on Apple Intelligence or start the model download themselves. While Apple Intelligence is off, `SelectTranslate` > `Settings...` > `Model` shows `Turn On Apple Intelligence` next to the `Engine` control. It opens System Settings > Apple Intelligence & Siri. After you turn it on, macOS downloads the model. SelectTranslate checks the model's availability whenever the app becomes active and every few seconds while it is waiting, so the `Apple` engine becomes selectable without restarting the app.
 
 The app sends the active shortcut set's rendered prompt template to a new `LanguageModelSession`, with instructions to return only the translated text. Contextual reply and reply correction use the same engine. The `Effort` control does not apply to this engine.
 

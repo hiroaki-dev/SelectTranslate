@@ -6,6 +6,7 @@ import SwiftUI
 final class TranslationPanelModel: ObservableObject {
     private static let effortDefaultsKey = "reasoningEffort"
     private var plamoSetupObserver: NSObjectProtocol?
+    private var plamoSettingsObserver: NSObjectProtocol?
     private var foundationModelsObserver: NSObjectProtocol?
 
     @Published var sourceText: String = ""
@@ -35,6 +36,12 @@ final class TranslationPanelModel: ObservableObject {
     @Published var historySearchQuery: String = ""
     @Published var selectedHistoryID: Int64?
     @Published var isPlamoReady: Bool
+    @Published var installedPlamoSizes: Set<PlamoModelSize>
+    @Published var plamoModelSize: PlamoModelSize {
+        didSet {
+            PlamoSettings.selectedModelSize = plamoModelSize
+        }
+    }
     @Published var foundationModelsAvailability: FoundationModelsAvailability
     @Published var currentDirection: TranslationDirection? = nil
     @Published var sourceLanguageSelection: SourceLanguageSelection = .automatic
@@ -48,9 +55,6 @@ final class TranslationPanelModel: ObservableObject {
             if oldValue != translationProvider {
                 TranslationPreferences.translationProvider = translationProvider
             }
-            if translationProvider == .plamo {
-                sourceLanguageSelection = .automatic
-            }
         }
     }
 
@@ -58,6 +62,8 @@ final class TranslationPanelModel: ObservableObject {
         let savedValue = UserDefaults.standard.string(forKey: Self.effortDefaultsKey)
         reasoningEffort = savedValue.flatMap(ReasoningEffort.init(rawValue:)) ?? .low
         isPlamoReady = PlamoSetupService.isSetupComplete
+        installedPlamoSizes = PlamoSetupService.installedModelSizes
+        plamoModelSize = PlamoSettings.selectedModelSize
         foundationModelsAvailability = FoundationModelsAvailabilityMonitor.shared.availability
         translationProvider = TranslationPreferences.translationProvider
         foundationModelsObserver = NotificationCenter.default.addObserver(
@@ -79,11 +85,23 @@ final class TranslationPanelModel: ObservableObject {
                 self?.refreshPlamoReadiness()
             }
         }
+        plamoSettingsObserver = NotificationCenter.default.addObserver(
+            forName: .plamoSettingsDidChange,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor in
+                self?.refreshPlamoModelSize()
+            }
+        }
     }
 
     deinit {
         if let plamoSetupObserver {
             NotificationCenter.default.removeObserver(plamoSetupObserver)
+        }
+        if let plamoSettingsObserver {
+            NotificationCenter.default.removeObserver(plamoSettingsObserver)
         }
         if let foundationModelsObserver {
             NotificationCenter.default.removeObserver(foundationModelsObserver)
@@ -92,7 +110,7 @@ final class TranslationPanelModel: ObservableObject {
 
     func setProviderFromUserSelection(_ provider: TranslationProvider) {
         if provider == .plamo, !isPlamoReady {
-            message = "Prepare PLaMo in Settings before selecting it."
+            message = "Download a PLaMo 3 model in Settings before selecting PLaMo."
             return
         }
         if provider == .foundationModels, let unavailableReason = foundationModelsAvailability.unavailableReason {
@@ -237,8 +255,17 @@ final class TranslationPanelModel: ObservableObject {
 
     private func refreshPlamoReadiness() {
         isPlamoReady = PlamoSetupService.isSetupComplete
+        installedPlamoSizes = PlamoSetupService.installedModelSizes
+        refreshPlamoModelSize()
         if !isPlamoReady, translationProvider == .plamo {
             translationProvider = .codex
+        }
+    }
+
+    private func refreshPlamoModelSize() {
+        let selectedSize = PlamoSettings.selectedModelSize
+        if plamoModelSize != selectedSize {
+            plamoModelSize = selectedSize
         }
     }
 }
@@ -250,6 +277,7 @@ final class TranslationPanelController {
     private var shouldActivateOnNextShow = false
 
     var onReasoningEffortChanged: ((ReasoningEffort) -> Void)?
+    var onPlamoModelSizeChanged: ((PlamoModelSize) -> Void)?
     var onTranslationProviderChanged: ((TranslationProvider) -> Void)?
     var onSourceLanguageSelectionChanged: ((SourceLanguageSelection) -> Void)?
     var onBackTranslateRequested: (() -> Void)?
@@ -655,7 +683,7 @@ final class TranslationPanelController {
 
     private static func loadingMessage(provider: TranslationProvider) -> String {
         if provider == .plamo {
-            return "PLaMo MLX is translating the selected text. Shortcut prompt templates are ignored by PLaMo."
+            return "PLaMo 3 \(PlamoSettings.selectedModelSize.label) is translating the selected text. Shortcut prompt templates are ignored by PLaMo."
         }
 
         return "\(provider.description) is translating the selected text."
@@ -704,6 +732,9 @@ final class TranslationPanelController {
                 effortChanged: { [weak self] effort in
                     self?.onReasoningEffortChanged?(effort)
                 },
+                plamoModelSizeChanged: { [weak self] size in
+                    self?.onPlamoModelSizeChanged?(size)
+                },
                 providerChanged: { [weak self] provider in
                     self?.onTranslationProviderChanged?(provider)
                 },
@@ -747,6 +778,7 @@ final class TranslationPanelController {
 private struct TranslationOverlayView: View {
     @ObservedObject var model: TranslationPanelModel
     let effortChanged: (ReasoningEffort) -> Void
+    let plamoModelSizeChanged: (PlamoModelSize) -> Void
     let providerChanged: (TranslationProvider) -> Void
     let sourceLanguageChanged: (SourceLanguageSelection) -> Void
     let backTranslate: () -> Void
@@ -974,6 +1006,8 @@ private struct TranslationOverlayView: View {
 
             if model.translationProvider == .codex || model.translationProvider == .claude {
                 effortPicker
+            } else if model.translationProvider == .plamo {
+                plamoModelPicker
             }
         }
     }
@@ -1024,6 +1058,29 @@ private struct TranslationOverlayView: View {
         }
     }
 
+    private var plamoModelPicker: some View {
+        HStack(spacing: 6) {
+            Text("Model")
+                .font(.system(size: 12, weight: .medium))
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+                .fixedSize(horizontal: true, vertical: false)
+
+            PlamoModelSegmentedControl(
+                selection: Binding(
+                    get: { model.plamoModelSize },
+                    set: { size in
+                        guard model.plamoModelSize != size else { return }
+                        model.plamoModelSize = size
+                        plamoModelSizeChanged(size)
+                    }
+                ),
+                installedSizes: model.installedPlamoSizes,
+                width: 250
+            )
+        }
+    }
+
     private var sourceLanguagePicker: some View {
         HStack(spacing: 6) {
             Text("Source")
@@ -1049,11 +1106,7 @@ private struct TranslationOverlayView: View {
             .controlSize(.small)
             .frame(width: 142)
             .disabled(!canChangeSourceLanguage)
-            .help(
-                model.translationProvider == .plamo
-                    ? "PLaMo uses its own language detection"
-                    : "Choose the original language manually"
-            )
+            .help("Choose the original language manually")
         }
     }
 
@@ -1239,8 +1292,7 @@ private struct TranslationOverlayView: View {
     }
 
     private var canChangeSourceLanguage: Bool {
-        model.translationProvider != .plamo &&
-            !model.isBackTranslating &&
+        !model.isBackTranslating &&
             !model.isReplyTranslating &&
             !model.isReplyBackTranslating
     }

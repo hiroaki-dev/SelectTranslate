@@ -32,6 +32,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 cancelsActiveTask: true
             )
         }
+        panelController.onPlamoModelSizeChanged = { [weak self] _ in
+            guard let self, self.panelController.translationProvider == .plamo else { return }
+            self.startSourceRetranslation(
+                effort: self.panelController.reasoningEffort,
+                provider: .plamo,
+                cancelsActiveTask: true
+            )
+        }
         panelController.onTranslationProviderChanged = { [weak self] provider in
             self?.startProviderChange(provider)
         }
@@ -630,6 +638,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     ) async {
         do {
             let cacheKey = TranslationCacheKey(request: request, effort: effort, provider: provider)
+            // Read before translating so the label names the model that produced this translation.
+            let engineLabel = historyEngineLabel(provider: provider, effort: effort)
             let resolvedSourceLanguageSelection = request.resolvedSourceLanguageSelection
             guard isActiveTranslationTask(generation: taskGeneration) else { return }
 
@@ -675,7 +685,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 request: request,
                 translatedText: translatedText,
                 provider: provider,
-                effort: effort
+                engineLabel: engineLabel
             )
         } catch {
             guard isActiveTranslationTask(generation: taskGeneration) else { return }
@@ -692,12 +702,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         request: TranslationRequest,
         translatedText: String,
         provider: TranslationProvider,
-        effort: ReasoningEffort
+        engineLabel: String
     ) {
         guard let item = historyStore.insert(
             originalText: request.sourceText,
             translatedText: translatedText,
-            engineLabel: historyEngineLabel(provider: provider, effort: effort),
+            engineLabel: engineLabel,
             providerRawValue: provider.rawValue,
             directionLabel: request.direction.label
         ) else {
@@ -768,7 +778,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             let model = ClaudeSettings.model
             return model.isEmpty ? "Claude" : "Claude: \(model)"
         case .plamo:
-            return "PLaMo"
+            return "PLaMo 3: \(PlamoSettings.selectedModelSize.label)"
         case .foundationModels:
             return "Apple Foundation Models"
         case .openAICompatible:
@@ -949,7 +959,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             panelController.showError(
                 source: currentTranslationRequest?.sourceText,
                 title: "PLaMo Not Ready",
-                message: "Prepare PLaMo in Settings before selecting it."
+                message: "Download a PLaMo 3 model in Settings before selecting PLaMo."
             )
             return
         }
@@ -1009,6 +1019,9 @@ private struct TranslationCacheKey: Hashable {
     let apiBaseURL: String
     let apiModel: String
     let claudeModel: String
+    let plamoModelSize: PlamoModelSize?
+    let plamoJapaneseForm: PlamoJapaneseForm
+    let plamoGlossaryTerms: [PlamoGlossaryTerm]
 
     init(request: TranslationRequest, effort: ReasoningEffort, provider: TranslationProvider) {
         self.init(
@@ -1058,5 +1071,19 @@ private struct TranslationCacheKey: Hashable {
         }
 
         claudeModel = provider == .claude ? ClaudeSettings.model : ""
+
+        if provider == .plamo {
+            plamoModelSize = PlamoSettings.selectedModelSize
+            plamoJapaneseForm = PlamoPrompt.effectiveForm(PlamoSettings.japaneseForm, direction: direction)
+            plamoGlossaryTerms = PlamoPrompt.glossaryTerms(
+                for: sourceText,
+                direction: direction,
+                glossary: PlamoSettings.glossary
+            )
+        } else {
+            plamoModelSize = nil
+            plamoJapaneseForm = .automatic
+            plamoGlossaryTerms = []
+        }
     }
 }

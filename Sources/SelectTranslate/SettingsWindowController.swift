@@ -43,6 +43,7 @@ final class SettingsWindowController {
 private final class SettingsModel: ObservableObject {
     private var providerObserver: NSObjectProtocol?
     private var plamoSetupObserver: NSObjectProtocol?
+    private var plamoSettingsObserver: NSObjectProtocol?
     private var foundationModelsObserver: NSObjectProtocol?
 
     @Published private(set) var shortcutProfiles: [ShortcutProfile]
@@ -101,11 +102,36 @@ private final class SettingsModel: ObservableObject {
     @Published var isAPIKeyVisible: Bool = false
     @Published var isPlamoReady: Bool
     @Published var foundationModelsAvailability: FoundationModelsAvailability
+    /// True while a PLaMo download or deletion is running.
     @Published var isPreparingPlamo: Bool = false
+    @Published var plamoBusySize: PlamoModelSize?
     @Published var plamoStatusMessage: String
     @Published var plamoStatusLog: String = ""
     @Published var isPlamoStatusError: Bool = false
+    @Published private(set) var installedPlamoSizes: Set<PlamoModelSize>
+    @Published private(set) var hasLegacyPlamoCache: Bool
+    @Published var plamoModelSize: PlamoModelSize {
+        didSet {
+            PlamoSettings.selectedModelSize = plamoModelSize
+        }
+    }
+    @Published var plamoJapaneseForm: PlamoJapaneseForm {
+        didSet {
+            PlamoSettings.japaneseForm = plamoJapaneseForm
+        }
+    }
+    @Published var plamoGlossary: [PlamoGlossaryEntry] {
+        didSet {
+            PlamoSettings.glossary = plamoGlossary
+        }
+    }
     private var plamoLogLines: [String] = []
+
+    var hasReservedTokenInGlossary: Bool {
+        plamoGlossary.contains { entry in
+            PlamoPrompt.containsReservedToken(entry.english) || PlamoPrompt.containsReservedToken(entry.japanese)
+        }
+    }
 
     var selectedShortcutProfile: ShortcutProfile? {
         shortcutProfiles.first { $0.id == selectedShortcutID }
@@ -135,9 +161,12 @@ private final class SettingsModel: ObservableObject {
         isPlamoReady = plamoReady
         foundationModelsAvailability = FoundationModelsAvailabilityMonitor.shared.availability
         translationProvider = TranslationPreferences.translationProvider
-        plamoStatusMessage = plamoReady
-            ? "PLaMo is ready."
-            : "Prepare PLaMo before selecting it."
+        installedPlamoSizes = PlamoSetupService.installedModelSizes
+        hasLegacyPlamoCache = PlamoSetupService.hasLegacyModelCache
+        plamoModelSize = PlamoSettings.selectedModelSize
+        plamoJapaneseForm = PlamoSettings.japaneseForm
+        plamoGlossary = PlamoSettings.glossary
+        plamoStatusMessage = Self.plamoIdleStatusMessage(isReady: plamoReady)
         providerObserver = NotificationCenter.default.addObserver(
             forName: .translationProviderDidChange,
             object: nil,
@@ -158,6 +187,19 @@ private final class SettingsModel: ObservableObject {
                 self?.refreshPlamoReadiness()
             }
         }
+        plamoSettingsObserver = NotificationCenter.default.addObserver(
+            forName: .plamoSettingsDidChange,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor in
+                guard let self else { return }
+                let selectedSize = PlamoSettings.selectedModelSize
+                if self.plamoModelSize != selectedSize {
+                    self.plamoModelSize = selectedSize
+                }
+            }
+        }
         foundationModelsObserver = NotificationCenter.default.addObserver(
             forName: .foundationModelsAvailabilityDidChange,
             object: nil,
@@ -176,6 +218,9 @@ private final class SettingsModel: ObservableObject {
         }
         if let plamoSetupObserver {
             NotificationCenter.default.removeObserver(plamoSetupObserver)
+        }
+        if let plamoSettingsObserver {
+            NotificationCenter.default.removeObserver(plamoSettingsObserver)
         }
         if let foundationModelsObserver {
             NotificationCenter.default.removeObserver(foundationModelsObserver)
@@ -260,43 +305,28 @@ private final class SettingsModel: ObservableObject {
         case .codex:
             TranslationPreferences.translationProvider = .codex
             translationProvider = .codex
-            isPlamoStatusError = false
-            plamoStatusMessage = isPlamoReady
-                ? "PLaMo is ready."
-                : "PLaMo setup is not installed yet."
+            resetPlamoStatusMessage()
         case .claude:
             TranslationPreferences.translationProvider = .claude
             translationProvider = .claude
-            isPlamoStatusError = false
-            plamoStatusMessage = isPlamoReady
-                ? "PLaMo is ready."
-                : "PLaMo setup is not installed yet."
+            resetPlamoStatusMessage()
         case .plamo:
-            guard isPlamoReady else {
-                isPlamoStatusError = false
-                plamoStatusMessage = "Prepare PLaMo before selecting it."
-                translationProvider = .codex
-                return
-            }
-            TranslationPreferences.translationProvider = .plamo
+            // PLaMo can be selected before any model is installed so that Settings shows the downloads.
+            // It is saved as the engine only once a model is installed (see refreshPlamoReadiness).
             translationProvider = .plamo
-            isPlamoStatusError = false
-            plamoStatusMessage = "PLaMo is ready."
+            if isPlamoReady {
+                TranslationPreferences.translationProvider = .plamo
+            }
+            resetPlamoStatusMessage()
         case .foundationModels:
             guard foundationModelsAvailability == .available else { return }
             TranslationPreferences.translationProvider = .foundationModels
             translationProvider = .foundationModels
-            isPlamoStatusError = false
-            plamoStatusMessage = isPlamoReady
-                ? "PLaMo is ready."
-                : "PLaMo setup is not installed yet."
+            resetPlamoStatusMessage()
         case .openAICompatible:
             TranslationPreferences.translationProvider = .openAICompatible
             translationProvider = .openAICompatible
-            isPlamoStatusError = false
-            plamoStatusMessage = isPlamoReady
-                ? "PLaMo is ready."
-                : "PLaMo setup is not installed yet."
+            resetPlamoStatusMessage()
         }
     }
 
@@ -334,40 +364,114 @@ private final class SettingsModel: ObservableObject {
         }
     }
 
-    func preparePlamo() {
+    func downloadPlamoModel(_ size: PlamoModelSize) {
+        runPlamoOperation(
+            size: size,
+            startMessage: "Preparing PLaMo 3 \(size.label)."
+        ) { progress in
+            try await PlamoSetupService.download(size, progress: progress)
+        } completion: { model in
+            if !model.installedPlamoSizes.contains(model.plamoModelSize) || model.installedPlamoSizes == [size] {
+                model.plamoModelSize = size
+            }
+            model.appendPlamoProgress("PLaMo 3 \(size.label) is ready.")
+        }
+    }
+
+    func deletePlamoModel(_ size: PlamoModelSize) {
+        runPlamoOperation(
+            size: size,
+            startMessage: "Deleting PLaMo 3 \(size.label)."
+        ) { _ in
+            try await PlamoSetupService.delete(size)
+        } completion: { model in
+            model.appendPlamoProgress("Deleted PLaMo 3 \(size.label).")
+        }
+    }
+
+    func deleteLegacyPlamoCache() {
+        runPlamoOperation(
+            size: nil,
+            startMessage: "Deleting the PLaMo 2 model."
+        ) { _ in
+            try await PlamoSetupService.deleteLegacyModelCache()
+        } completion: { model in
+            model.appendPlamoProgress("Deleted the PLaMo 2 model.")
+        }
+    }
+
+    func addGlossaryEntry() {
+        plamoGlossary.append(PlamoGlossaryEntry())
+    }
+
+    func removeGlossaryEntry(_ id: PlamoGlossaryEntry.ID) {
+        plamoGlossary.removeAll { $0.id == id }
+    }
+
+    func glossaryBinding(for id: PlamoGlossaryEntry.ID, keyPath: WritableKeyPath<PlamoGlossaryEntry, String>) -> Binding<String> {
+        Binding(
+            get: { [weak self] in
+                self?.plamoGlossary.first { $0.id == id }?[keyPath: keyPath] ?? ""
+            },
+            set: { [weak self] value in
+                guard let self, let index = self.plamoGlossary.firstIndex(where: { $0.id == id }) else { return }
+                self.plamoGlossary[index][keyPath: keyPath] = value
+            }
+        )
+    }
+
+    private func runPlamoOperation(
+        size: PlamoModelSize?,
+        startMessage: String,
+        operation: @escaping (@escaping @Sendable (String) -> Void) async throws -> Void,
+        completion: @escaping @MainActor (SettingsModel) -> Void
+    ) {
         guard !isPreparingPlamo else { return }
 
         isPreparingPlamo = true
+        plamoBusySize = size
         isPlamoStatusError = false
         plamoLogLines = []
         plamoStatusLog = ""
-        appendPlamoProgress("Preparing PLaMo.")
+        appendPlamoProgress(startMessage)
 
-        Task { [weak self] in
-            guard let self else { return }
-            do {
-                try await PlamoSetupService.prepare { message in
-                    Task { @MainActor [weak self] in
-                        self?.appendPlamoProgress(message)
-                    }
-                }
-
-                await MainActor.run {
-                    self.isPreparingPlamo = false
-                    self.isPlamoStatusError = false
-                    self.isPlamoReady = PlamoSetupService.isSetupComplete
-                    self.appendPlamoProgress("PLaMo is ready.")
-                }
-            } catch {
-                await MainActor.run {
-                    self.isPreparingPlamo = false
-                    self.isPlamoStatusError = true
-                    self.isPlamoReady = PlamoSetupService.isSetupComplete
-                    self.appendPlamoProgress("ERROR: \(error.localizedDescription)")
-                    self.translationProvider = TranslationPreferences.translationProvider
-                }
+        let progress: @Sendable (String) -> Void = { [weak self] message in
+            Task { @MainActor in
+                self?.appendPlamoProgress(message)
             }
         }
+        Task { [weak self] in
+            do {
+                try await operation(progress)
+                guard let self else { return }
+                self.finishPlamoOperation()
+                completion(self)
+            } catch {
+                guard let self else { return }
+                self.finishPlamoOperation()
+                self.isPlamoStatusError = true
+                self.appendPlamoProgress("ERROR: \(error.localizedDescription)")
+            }
+        }
+    }
+
+    private func finishPlamoOperation() {
+        isPreparingPlamo = false
+        plamoBusySize = nil
+        refreshPlamoReadiness()
+    }
+
+    private func resetPlamoStatusMessage() {
+        guard !isPreparingPlamo else { return }
+        isPlamoStatusError = false
+        plamoStatusMessage = Self.plamoIdleStatusMessage(isReady: isPlamoReady)
+    }
+
+    private static func plamoIdleStatusMessage(isReady: Bool) -> String {
+        if isReady {
+            return "PLaMo 3 is ready."
+        }
+        return "Download a PLaMo 3 model to start using PLaMo. Until then, translations use \(TranslationPreferences.translationProvider.label)."
     }
 
     private func updateSelectedShortcut(_ update: (inout ShortcutProfile) -> Void) {
@@ -390,14 +494,16 @@ private final class SettingsModel: ObservableObject {
 
     private func refreshPlamoReadiness() {
         isPlamoReady = PlamoSetupService.isSetupComplete
-        if !isPlamoReady, translationProvider == .plamo {
-            translationProvider = .codex
-            TranslationPreferences.translationProvider = .codex
+        installedPlamoSizes = PlamoSetupService.installedModelSizes
+        hasLegacyPlamoCache = PlamoSetupService.hasLegacyModelCache
+        let selectedSize = PlamoSettings.selectedModelSize
+        if plamoModelSize != selectedSize {
+            plamoModelSize = selectedSize
         }
-        if isPlamoReady, !isPreparingPlamo {
-            isPlamoStatusError = false
-            plamoStatusMessage = "PLaMo is ready."
+        if isPlamoReady, translationProvider == .plamo, TranslationPreferences.translationProvider != .plamo {
+            TranslationPreferences.translationProvider = .plamo
         }
+        resetPlamoStatusMessage()
     }
 
     private func appendPlamoProgress(_ message: String) {
@@ -466,6 +572,8 @@ private enum SettingsSection: String, CaseIterable, Identifiable {
 private struct SettingsView: View {
     @ObservedObject var model: SettingsModel
     @State private var selectedSection: SettingsSection = .model
+    @State private var plamoSizePendingDeletion: PlamoModelSize?
+    @State private var isConfirmingLegacyPlamoDeletion = false
     let close: () -> Void
 
     var body: some View {
@@ -479,6 +587,30 @@ private struct SettingsView: View {
             }
         }
         .frame(minWidth: 760, minHeight: 680)
+        .confirmationDialog(
+            "Delete PLaMo 3 \(plamoSizePendingDeletion?.label ?? "")?",
+            isPresented: Binding(
+                get: { plamoSizePendingDeletion != nil },
+                set: { if !$0 { plamoSizePendingDeletion = nil } }
+            ),
+            presenting: plamoSizePendingDeletion
+        ) { size in
+            Button("Delete", role: .destructive) {
+                model.deletePlamoModel(size)
+            }
+        } message: { size in
+            Text("The model files (about \(size.approximateDownloadSize)) are removed. You can download them again later.")
+        }
+        .confirmationDialog(
+            "Delete the PLaMo 2 model?",
+            isPresented: $isConfirmingLegacyPlamoDeletion
+        ) {
+            Button("Delete", role: .destructive) {
+                model.deleteLegacyPlamoCache()
+            }
+        } message: {
+            Text("The files of mlx-community/plamo-2-translate are removed from the app's Hugging Face cache.")
+        }
     }
 
     private var header: some View {
@@ -561,6 +693,11 @@ private struct SettingsView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 14) {
                 modelSection
+
+                if isShowingPlamoSection {
+                    Divider()
+                    plamoSection
+                }
 
                 if model.translationProvider == .codex {
                     Divider()
@@ -668,7 +805,8 @@ private struct SettingsView: View {
                         get: { model.translationProvider },
                         set: { model.selectProvider($0) }
                     ),
-                    isPlamoReady: model.isPlamoReady,
+                    // Selecting PLaMo here shows its downloads, so it stays enabled before setup.
+                    isPlamoReady: true,
                     foundationModelsAvailability: model.foundationModelsAvailability,
                     isDisabled: model.isPreparingPlamo,
                     width: 420
@@ -683,12 +821,6 @@ private struct SettingsView: View {
 
                 // Stacked so both setup actions fit when PLaMo and Apple Intelligence both need attention.
                 VStack(alignment: .trailing, spacing: 6) {
-                    if model.translationProvider == .plamo || !model.isPlamoReady {
-                        Button("Prepare PLaMo") {
-                            model.preparePlamo()
-                        }
-                        .disabled(model.isPreparingPlamo || model.isPlamoReady)
-                    }
 
                     switch model.foundationModelsAvailability {
                     case .appleIntelligenceNotEnabled:
@@ -711,42 +843,6 @@ private struct SettingsView: View {
                 }
             }
 
-            if model.translationProvider == .plamo {
-                Text(model.plamoStatusMessage)
-                    .font(.system(size: 12))
-                    .foregroundStyle(model.isPlamoStatusError ? .red : .secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("Built with PLaMo")
-                        .font(.system(size: 12, weight: .semibold))
-                        .foregroundStyle(.secondary)
-                    Text("PLaMo is governed by the PLaMo community license.")
-                        .font(.system(size: 12))
-                        .foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-
-                if !model.plamoStatusLog.isEmpty {
-                    ScrollView {
-                        Text(model.plamoStatusLog)
-                            .font(.system(size: 11, design: .monospaced))
-                            .foregroundStyle(.secondary)
-                            .textSelection(.enabled)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .padding(8)
-                    }
-                    .frame(height: 120)
-                    .background(
-                        RoundedRectangle(cornerRadius: 8)
-                            .fill(Color(nsColor: .textBackgroundColor).opacity(0.82))
-                    )
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 8)
-                            .stroke(Color(nsColor: .separatorColor), lineWidth: 1)
-                    )
-                }
-            }
         }
     }
 
@@ -1137,6 +1233,252 @@ private struct SettingsView: View {
                     TextField("Enter the model name", text: $model.claudeModel)
                         .textFieldStyle(.roundedBorder)
                 }
+            }
+        }
+    }
+
+    private var isShowingPlamoSection: Bool {
+        model.translationProvider == .plamo
+    }
+
+    private var plamoSection: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text("PLaMo 3")
+                    .font(.system(size: 14, weight: .semibold))
+                Text("Runs PLaMo 3 Translate locally with MLX. Download one or more sizes, then switch between them from the Model control in the translation panel. Larger models translate better but need more memory and time.")
+                    .font(.system(size: 12))
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            plamoModelList
+
+            Text(model.plamoStatusMessage)
+                .font(.system(size: 12))
+                .foregroundStyle(model.isPlamoStatusError ? .red : .secondary)
+                .fixedSize(horizontal: false, vertical: true)
+                .textSelection(.enabled)
+
+            if !model.plamoStatusLog.isEmpty {
+                plamoLog
+            }
+
+            if model.hasLegacyPlamoCache {
+                legacyPlamoRow
+            }
+
+            Divider()
+            plamoStyleSection
+            Divider()
+            plamoGlossarySection
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Built with PLaMo")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(.secondary)
+                Text("PLaMo is governed by the PLaMo Community License.")
+                    .font(.system(size: 12))
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+    }
+
+    private var plamoModelList: some View {
+        VStack(spacing: 0) {
+            ForEach(Array(PlamoModelSize.allCases.enumerated()), id: \.element.id) { index, size in
+                plamoModelRow(size)
+                if index < PlamoModelSize.allCases.count - 1 {
+                    Divider()
+                }
+            }
+        }
+        .background(
+            RoundedRectangle(cornerRadius: 8)
+                .fill(Color(nsColor: .textBackgroundColor).opacity(0.82))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 8)
+                .stroke(Color(nsColor: .separatorColor), lineWidth: 1)
+        )
+    }
+
+    private func plamoModelRow(_ size: PlamoModelSize) -> some View {
+        let isInstalled = model.installedPlamoSizes.contains(size)
+        let isBusy = model.plamoBusySize == size
+
+        return HStack(spacing: 10) {
+            VStack(alignment: .leading, spacing: 2) {
+                HStack(spacing: 6) {
+                    Text(size.label)
+                        .font(.system(size: 13, weight: .semibold))
+                    if size == .recommended {
+                        Text("Recommended")
+                            .font(.system(size: 10, weight: .semibold))
+                            .padding(.horizontal, 5)
+                            .padding(.vertical, 1)
+                            .background(Capsule().fill(Color.accentColor.opacity(0.18)))
+                    }
+                    if isInstalled, model.plamoModelSize == size {
+                        Text("In use")
+                            .font(.system(size: 10, weight: .semibold))
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                Text("\(size.repositoryID) · about \(size.approximateDownloadSize)")
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
+                    .textSelection(.enabled)
+            }
+
+            Spacer()
+
+            if isBusy {
+                ProgressView()
+                    .controlSize(.small)
+            }
+
+            if isInstalled {
+                Label("Installed", systemImage: "checkmark.circle.fill")
+                    .font(.system(size: 12))
+                    .foregroundStyle(.green)
+                    .labelStyle(.titleAndIcon)
+
+                Button("Use") {
+                    model.plamoModelSize = size
+                }
+                .disabled(model.plamoModelSize == size)
+                .help("Use this size for PLaMo translations")
+
+                Button("Delete…") {
+                    plamoSizePendingDeletion = size
+                }
+                .disabled(model.isPreparingPlamo)
+                .help("Delete the downloaded model files")
+            } else {
+                Button("Download") {
+                    model.downloadPlamoModel(size)
+                }
+                .disabled(model.isPreparingPlamo)
+                .help("Download \(size.repositoryID) (about \(size.approximateDownloadSize))")
+            }
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+    }
+
+    private var plamoLog: some View {
+        ScrollView {
+            Text(model.plamoStatusLog)
+                .font(.system(size: 11, design: .monospaced))
+                .foregroundStyle(.secondary)
+                .textSelection(.enabled)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(8)
+        }
+        .frame(height: 120)
+        .background(
+            RoundedRectangle(cornerRadius: 8)
+                .fill(Color(nsColor: .textBackgroundColor).opacity(0.82))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 8)
+                .stroke(Color(nsColor: .separatorColor), lineWidth: 1)
+        )
+    }
+
+    private var legacyPlamoRow: some View {
+        HStack(alignment: .firstTextBaseline, spacing: 10) {
+            Text("The PLaMo 2 model from an earlier version is still on disk. PLaMo 3 does not use it.")
+                .font(.system(size: 12))
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+            Spacer()
+            Button("Delete PLaMo 2 Model…") {
+                isConfirmingLegacyPlamoDeletion = true
+            }
+            .disabled(model.isPreparingPlamo)
+        }
+    }
+
+    private var plamoStyleSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 12) {
+                Text("Japanese style")
+                    .font(.system(size: 13, weight: .semibold))
+                Picker("", selection: $model.plamoJapaneseForm) {
+                    ForEach(PlamoJapaneseForm.allCases) { form in
+                        Text(form.label).tag(form)
+                    }
+                }
+                .pickerStyle(.segmented)
+                .labelsHidden()
+                .frame(width: 220)
+            }
+            Text("\(model.plamoJapaneseForm.detail). Applies only when translating into Japanese.")
+                .font(.system(size: 12))
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    private var plamoGlossarySection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Glossary")
+                        .font(.system(size: 13, weight: .semibold))
+                    Text("Term pairs PLaMo must use. Each pair works in both directions, and only the terms found in the original text are sent. English terms match regardless of case.")
+                        .font(.system(size: 12))
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                Spacer()
+                Button {
+                    model.addGlossaryEntry()
+                } label: {
+                    Label("Add Term", systemImage: "plus")
+                }
+            }
+
+            if model.plamoGlossary.isEmpty {
+                Text("No terms yet.")
+                    .font(.system(size: 12))
+                    .foregroundStyle(.secondary)
+            } else {
+                Grid(alignment: .leading, horizontalSpacing: 8, verticalSpacing: 6) {
+                    GridRow {
+                        Text("English")
+                            .font(.system(size: 11, weight: .medium))
+                            .foregroundStyle(.secondary)
+                        Text("Japanese")
+                            .font(.system(size: 11, weight: .medium))
+                            .foregroundStyle(.secondary)
+                        Color.clear.frame(width: 22, height: 1)
+                    }
+                    ForEach(model.plamoGlossary) { entry in
+                        GridRow {
+                            TextField("dashboard", text: model.glossaryBinding(for: entry.id, keyPath: \.english))
+                                .textFieldStyle(.roundedBorder)
+                            TextField("管理画面", text: model.glossaryBinding(for: entry.id, keyPath: \.japanese))
+                                .textFieldStyle(.roundedBorder)
+                            Button {
+                                model.removeGlossaryEntry(entry.id)
+                            } label: {
+                                Image(systemName: "minus.circle")
+                                    .frame(width: 22, height: 22)
+                            }
+                            .buttonStyle(.plain)
+                            .help("Remove term")
+                        }
+                    }
+                }
+            }
+
+            if model.hasReservedTokenInGlossary {
+                Text("Text such as <|plamo:tag|> is reserved by PLaMo and is removed before translation.")
+                    .font(.system(size: 12))
+                    .foregroundStyle(.orange)
             }
         }
     }

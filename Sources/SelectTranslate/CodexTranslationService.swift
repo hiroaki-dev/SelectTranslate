@@ -129,7 +129,7 @@ enum TranslationServiceError: LocalizedError {
         case let .commandFailed(provider, commandName, status, output):
             let detail = Self.conciseError(from: output)
             let installHint = provider == .plamo
-                ? " Run Prepare PLaMo in Settings before selecting the local model."
+                ? " Download a PLaMo model in Settings before selecting the local model."
                 : ""
             if detail.isEmpty {
                 return "\(commandName) exited with status \(status).\(installHint)"
@@ -204,7 +204,7 @@ final class CodexTranslationService {
         case .claude:
             return try await translatePromptWithClaude(prompt, effort: effort)
         case .plamo:
-            return try await translateWithPlamo(text, onPartialResult: onPartialResult)
+            return try await translateWithPlamo(text, direction: direction, onPartialResult: onPartialResult)
         case .foundationModels:
             return try await FoundationModelsTranslator.respond(
                 to: prompt,
@@ -503,14 +503,28 @@ final class CodexTranslationService {
 
     private func translateWithPlamo(
         _ text: String,
+        direction: TranslationDirection,
         onPartialResult: @escaping TranslationProgressHandler
     ) async throws -> String {
+        let modelSize = PlamoSettings.selectedModelSize
+        let prompt = PlamoPrompt.make(
+            text: text,
+            direction: direction,
+            form: PlamoSettings.japaneseForm,
+            glossaryTerms: PlamoPrompt.glossaryTerms(
+                for: text,
+                direction: direction,
+                glossary: PlamoSettings.glossary
+            )
+        )
         let processBox = CancellableProcessBox()
         let task = Task.detached(priority: .userInitiated) { [workspaceURL, processBox] in
-            guard PlamoSetupService.isSetupComplete else {
+            guard PlamoSetupService.isEnvironmentReady,
+                  let modelURL = PlamoSetupService.modelSnapshotURL(for: modelSize),
+                  PlamoSetupService.isModelInstalled(modelSize) else {
                 throw TranslationServiceError.providerNotReady(
                     provider: .plamo,
-                    message: "Run Prepare PLaMo in Settings before selecting it."
+                    message: "Download PLaMo 3 \(modelSize.label) in Settings before using it."
                 )
             }
 
@@ -527,14 +541,16 @@ final class CodexTranslationService {
                 "mlx_lm",
                 "generate",
                 "--model",
-                PlamoSetupService.modelID,
+                modelURL.path,
                 "--trust-remote-code",
-                "--extra-eos-token",
-                PlamoSetupService.extraEOSToken,
+                // The prompt is already in PFML3; the bundled chat template needs a target language argument.
+                "--ignore-chat-template",
+                "--temp",
+                "0",
                 "--max-tokens",
                 "\(Self.plamoMaxTokens(for: text))",
                 "--prompt",
-                text
+                prompt
             ]
             process.environment = Self.processEnvironment(workingDirectory: workspaceURL.path)
 
@@ -715,7 +731,7 @@ final class CodexTranslationService {
         return translated
     }
 
-    private static func parsePlamoOutput(_ output: String, sourceText: String) -> String {
+    static func parsePlamoOutput(_ output: String, sourceText: String) -> String {
         let trimmed = output.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return "" }
 

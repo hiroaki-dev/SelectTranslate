@@ -123,6 +123,7 @@ enum TranslationServiceError: LocalizedError {
     case requestFailed(provider: TranslationProvider, status: Int, output: String)
     case invalidResponse(provider: TranslationProvider, message: String)
     case providerNotReady(provider: TranslationProvider, message: String)
+    case timedOut(provider: TranslationProvider, commandName: String, seconds: TimeInterval)
 
     var errorDescription: String? {
         switch self {
@@ -149,6 +150,8 @@ enum TranslationServiceError: LocalizedError {
             return "\(provider.description) returned an invalid response: \(message)"
         case let .providerNotReady(provider, message):
             return "\(provider.description) is not ready: \(message)"
+        case let .timedOut(_, commandName, seconds):
+            return "\(commandName) did not finish within \(Int(seconds)) seconds and was stopped."
         }
     }
 
@@ -182,6 +185,8 @@ final class CodexTranslationService {
     private static let maximumPlamoMaxTokens = 8192
     private static let translationSystemMessage = "You are a precise translation engine. Return only the translated text. Do not add explanations, alternatives, labels, quotes, or notes."
     private static let replyCorrectionSystemMessage = "You are a writing coach for a language learner. Follow the requested output structure exactly."
+    /// Upper bound for a single `codex exec` / `claude -p` run before it is stopped and reported as an error.
+    private static let cliTimeout: TimeInterval = 300
 
     private let workspaceURL: URL
 
@@ -351,36 +356,26 @@ final class CodexTranslationService {
             process.arguments = arguments
             process.environment = Self.processEnvironment(workingDirectory: workspaceURL.path)
 
-            let input = Pipe()
-            let stdout = Pipe()
-            let stderr = Pipe()
-            process.standardInput = input
-            process.standardOutput = stdout
-            process.standardError = stderr
-
             try Task.checkCancellation()
-            try process.run()
-            if let data = prompt.data(using: .utf8) {
-                input.fileHandleForWriting.write(data)
-            }
-            input.fileHandleForWriting.closeFile()
-
-            let stdoutData = stdout.fileHandleForReading.readDataToEndOfFile()
-            let stderrData = stderr.fileHandleForReading.readDataToEndOfFile()
-            process.waitUntilExit()
+            let result = try Self.runCLI(
+                process,
+                prompt: prompt,
+                provider: .codex,
+                commandName: "codex exec"
+            )
             try Task.checkCancellation()
 
-            let stdoutText = String(data: stdoutData, encoding: .utf8) ?? ""
-            let stderrText = String(data: stderrData, encoding: .utf8) ?? ""
+            let stdoutText = result.stdoutText
+            let stderrText = result.stderrText
             let combinedOutput = [stderrText, stdoutText]
                 .filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
                 .joined(separator: "\n")
 
-            if process.terminationStatus != 0 {
+            if result.terminationStatus != 0 {
                 throw TranslationServiceError.commandFailed(
                     provider: .codex,
                     commandName: "codex exec",
-                    status: process.terminationStatus,
+                    status: result.terminationStatus,
                     output: combinedOutput
                 )
             }
@@ -393,7 +388,7 @@ final class CodexTranslationService {
                 throw TranslationServiceError.commandFailed(
                     provider: .codex,
                     commandName: "codex exec",
-                    status: process.terminationStatus,
+                    status: result.terminationStatus,
                     output: translated
                 )
             }
@@ -442,36 +437,26 @@ final class CodexTranslationService {
             process.arguments?.append(contentsOf: ["--effort", effort.rawValue])
             process.environment = Self.processEnvironment(workingDirectory: workspaceURL.path)
 
-            let input = Pipe()
-            let stdout = Pipe()
-            let stderr = Pipe()
-            process.standardInput = input
-            process.standardOutput = stdout
-            process.standardError = stderr
-
             try Task.checkCancellation()
-            try process.run()
-            if let data = prompt.data(using: .utf8) {
-                input.fileHandleForWriting.write(data)
-            }
-            input.fileHandleForWriting.closeFile()
-
-            let stdoutData = stdout.fileHandleForReading.readDataToEndOfFile()
-            let stderrData = stderr.fileHandleForReading.readDataToEndOfFile()
-            process.waitUntilExit()
+            let result = try Self.runCLI(
+                process,
+                prompt: prompt,
+                provider: .claude,
+                commandName: "claude -p"
+            )
             try Task.checkCancellation()
 
-            let stdoutText = String(data: stdoutData, encoding: .utf8) ?? ""
-            let stderrText = String(data: stderrData, encoding: .utf8) ?? ""
+            let stdoutText = result.stdoutText
+            let stderrText = result.stderrText
             let combinedOutput = [stderrText, stdoutText]
                 .filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
                 .joined(separator: "\n")
 
-            if process.terminationStatus != 0 {
+            if result.terminationStatus != 0 {
                 throw TranslationServiceError.commandFailed(
                     provider: .claude,
                     commandName: "claude -p",
-                    status: process.terminationStatus,
+                    status: result.terminationStatus,
                     output: combinedOutput
                 )
             }
@@ -481,7 +466,7 @@ final class CodexTranslationService {
                 throw TranslationServiceError.commandFailed(
                     provider: .claude,
                     commandName: "claude -p",
-                    status: process.terminationStatus,
+                    status: result.terminationStatus,
                     output: translated
                 )
             }
@@ -837,6 +822,19 @@ final class CodexTranslationService {
 
     private static func defaultWorkspaceURL() -> URL {
         AppPaths.codexWorkspaceURL
+    }
+
+    private static func runCLI(
+        _ process: Process,
+        prompt: String,
+        provider: TranslationProvider,
+        commandName: String
+    ) throws -> ChildProcessRunner.Result {
+        do {
+            return try ChildProcessRunner.run(process, input: Data(prompt.utf8), timeout: cliTimeout)
+        } catch ChildProcessRunner.RunError.timedOut(let seconds) {
+            throw TranslationServiceError.timedOut(provider: provider, commandName: commandName, seconds: seconds)
+        }
     }
 
     private static func processEnvironment(workingDirectory: String) -> [String: String] {

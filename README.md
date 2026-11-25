@@ -60,7 +60,7 @@ Use the `Effort` segmented control in the panel to choose the Codex or Claude re
 
 For the PLaMo engine, the same row shows a `Model` segmented control for choosing the PLaMo 3 size instead. See [PLaMo command](#plamo-command).
 
-While a translation is running, the panel shows a stop button next to the engine control. Click it, or press `Command + .`, to stop the translation, including the underlying CLI process or API request. You can also change `Engine` or `Effort` while translating: the running translation stops and the same source text is translated again with the new selection.
+While a translation is running, the panel shows a stop button next to the engine control. Click it, or press `Command + .`, to stop the translation, including the underlying CLI process or API request. You can also change `Engine` or `Effort` while translating: the running translation stops and the same source text is translated again with the new selection. If a Codex or Claude run does not finish within 5 minutes, the app stops the CLI process and shows an error.
 
 Use the retranslation button in the `Translation` header to translate the current translation back to the original language. The back translation appears at the bottom of the `Translation` area.
 
